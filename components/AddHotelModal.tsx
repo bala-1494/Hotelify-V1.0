@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Hotel } from '@/lib/types'
+import { generateMockHotel } from '@/lib/mockHotel'
 
 interface Props {
   onClose: () => void
@@ -85,7 +86,16 @@ export default function AddHotelModal({ onClose, onAdd }: Props) {
 
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    importHotel({ url }, setUrlLoading, setUrlError)
+    // The real Places API integration is down — generate a mock hotel from
+    // the pasted URL instead of hitting /api/places.
+    setUrlError('')
+    setUrlLoading(true)
+    setTimeout(() => {
+      const hotel = generateMockHotel(url)
+      setUrlLoading(false)
+      onAdd(hotel)
+      onClose()
+    }, 500)
   }
 
   const handleNameSubmit = (e: React.FormEvent) => {
@@ -202,7 +212,7 @@ export default function AddHotelModal({ onClose, onAdd }: Props) {
               className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:border-primary focus:outline-none transition-colors mb-2"
             />
             <p className="text-xs text-gray-400 mb-6">
-              Either search by name or paste a link. We&apos;ll verify it&apos;s a lodging property and pull in all details.
+              Preview mode: the Google Places import is temporarily unavailable, so any link you paste here generates a mock hotel page with sample photos and reviews.
             </p>
 
             {urlError && (

@@ -6,6 +6,7 @@ import { useAuth } from '@/components/AuthProvider'
 import Navbar from '@/components/Navbar'
 import { Hotel, Review } from '@/lib/types'
 import { useHotels } from '@/hooks/useHotels'
+import { photoUrl } from '@/lib/photo'
 
 function Stars({ rating, size = 4 }: { rating: number; size?: number }) {
   return (
@@ -44,12 +45,19 @@ export default function HotelPage() {
     )
   }
 
-  const photo = (ref: string, w = 1200) => `/api/photo?ref=${ref}&maxwidth=${w}`
+  const photo = (ref: string, w = 1200) => photoUrl(ref, w)
   const mapsEmbedKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  const isMock = hotel.id.startsWith('mock-')
 
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
+
+      {isMock && (
+        <div className="bg-amber-50 border-b border-amber-100 text-amber-800 text-sm text-center py-2 px-4">
+          Preview mode — this is a mock hotel page generated from your pasted URL, not live Google Places data.
+        </div>
+      )}
 
       {/* Hero */}
       <div className="relative h-[55vh] min-h-[420px] bg-gray-900 overflow-hidden">
