@@ -7,6 +7,7 @@ import Navbar from '@/components/Navbar'
 import AddHotelModal from '@/components/AddHotelModal'
 import { Hotel } from '@/lib/types'
 import { useHotels } from '@/hooks/useHotels'
+import { photoUrl } from '@/lib/photo'
 
 function StarIcon() {
   return (
@@ -86,7 +87,7 @@ export default function DashboardPage() {
                   {hotel.photoReferences[0] ? (
                     <div className="h-48 bg-gray-100 overflow-hidden">
                       <img
-                        src={`/api/photo?ref=${hotel.photoReferences[0]}&maxwidth=600`}
+                        src={photoUrl(hotel.photoReferences[0], 600)}
                         alt={hotel.name}
                         className="w-full h-full object-cover"
                       />
