@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
 import Navbar from '@/components/Navbar'
-import { Hotel, Review } from '@/lib/types'
+import { Hotel, Review, RoomType } from '@/lib/types'
 import { useHotels } from '@/hooks/useHotels'
 import { photoUrl } from '@/lib/photo'
+import RoomTypesEditor from '@/components/RoomTypesEditor'
+import ShareBookingLink from '@/components/ShareBookingLink'
 
 function Stars({ rating, size = 4 }: { rating: number; size?: number }) {
   return (
@@ -26,7 +28,7 @@ export default function HotelPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
-  const { hotels } = useHotels()
+  const { hotels, updateHotel } = useHotels()
   const [hotel, setHotel] = useState<Hotel | null>(null)
 
   useEffect(() => {
@@ -152,6 +154,12 @@ export default function HotelPage() {
               </section>
             )}
 
+            {/* Room Types */}
+            <RoomTypesEditor
+              roomTypes={hotel.roomTypes}
+              onChange={(roomTypes: RoomType[]) => updateHotel(hotel.id, { roomTypes })}
+            />
+
             {/* Reviews */}
             {hotel.reviews.length > 0 && (
               <section>
@@ -190,6 +198,8 @@ export default function HotelPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
+
+            <ShareBookingLink subdomain={hotel.subdomain} />
 
             {/* CTA */}
             <div className="bg-primary rounded-2xl p-6 text-white">

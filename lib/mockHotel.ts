@@ -102,5 +102,7 @@ export function generateMockHotel(url: string): Hotel {
     addedAt: new Date().toISOString(),
     mapsUrl: url,
     priceLevel: 1 + (seed % 4),
+    subdomain: '', // backfilled uniquely by useHotels() on save
+    roomTypes: [],
   }
 }
