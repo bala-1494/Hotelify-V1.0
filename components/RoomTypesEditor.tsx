@@ -1,0 +1,372 @@
+'use client'
+
+import { useState } from 'react'
+import { RoomType, PriceOption } from '@/lib/types'
+
+const SUGGESTED_AMENITIES = ['AC', 'Geyser', 'WiFi', 'TV', 'Balcony', 'Attached Bathroom', 'Room Service', 'Mini Fridge']
+
+interface Props {
+  roomTypes: RoomType[]
+  onChange: (roomTypes: RoomType[]) => void
+}
+
+function newId() {
+  return crypto.randomUUID()
+}
+
+export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [name, setName] = useState('')
+  const [price, setPrice] = useState('')
+  const [inventory, setInventory] = useState('')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const update = (id: string, patch: Partial<RoomType>) => {
+    onChange(roomTypes.map(r => (r.id === id ? { ...r, ...patch } : r)))
+  }
+
+  const remove = (id: string) => {
+    onChange(roomTypes.filter(r => r.id !== id))
+  }
+
+  const submitAdd = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim() || !price || !inventory) return
+    const room: RoomType = {
+      id: newId(),
+      name: name.trim(),
+      basePrice: Number(price),
+      totalInventory: Number(inventory),
+      amenities: [],
+      viewOptions: [],
+      mealOptions: [],
+    }
+    onChange([...roomTypes, room])
+    setName('')
+    setPrice('')
+    setInventory('')
+    setShowAddForm(false)
+    setExpandedId(room.id)
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Room Types</h2>
+        {!showAddForm && (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary-dark transition-colors"
+          >
+            + Add Room Type
+          </button>
+        )}
+      </div>
+
+      {showAddForm && (
+        <form onSubmit={submitAdd} className="bg-gray-50 rounded-2xl p-5 mb-6 flex flex-wrap gap-3 items-end">
+          <div className="flex-1 min-w-[160px]">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Room name</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Deluxe King Room"
+              className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              autoFocus
+            />
+          </div>
+          <div className="w-28">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Price / night</label>
+            <input
+              type="number"
+              min="0"
+              value={price}
+              onChange={e => setPrice(e.target.value)}
+              placeholder="4500"
+              className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            />
+          </div>
+          <div className="w-24">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Inventory</label>
+            <input
+              type="number"
+              min="1"
+              value={inventory}
+              onChange={e => setInventory(e.target.value)}
+              placeholder="5"
+              className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={!name.trim() || !price || !inventory}
+              className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-dark transition-colors disabled:opacity-50"
+            >
+              Add
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAddForm(false)}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {roomTypes.length === 0 && !showAddForm && (
+        <p className="text-gray-400 text-sm">No room types yet — add one to start building your booking page.</p>
+      )}
+
+      <div className="space-y-4">
+        {roomTypes.map(room => (
+          <RoomTypeCard
+            key={room.id}
+            room={room}
+            expanded={expandedId === room.id}
+            onToggleExpand={() => setExpandedId(expandedId === room.id ? null : room.id)}
+            onUpdate={patch => update(room.id, patch)}
+            onRemove={() => remove(room.id)}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function RoomTypeCard({
+  room,
+  expanded,
+  onToggleExpand,
+  onUpdate,
+  onRemove,
+}: {
+  room: RoomType
+  expanded: boolean
+  onToggleExpand: () => void
+  onUpdate: (patch: Partial<RoomType>) => void
+  onRemove: () => void
+}) {
+  const [customAmenity, setCustomAmenity] = useState('')
+  const [viewLabel, setViewLabel] = useState('')
+  const [viewDelta, setViewDelta] = useState('')
+  const [mealLabel, setMealLabel] = useState('')
+  const [mealDelta, setMealDelta] = useState('')
+
+  const toggleAmenity = (tag: string) => {
+    const has = room.amenities.includes(tag)
+    onUpdate({ amenities: has ? room.amenities.filter(a => a !== tag) : [...room.amenities, tag] })
+  }
+
+  const addCustomAmenity = () => {
+    const tag = customAmenity.trim()
+    if (!tag || room.amenities.includes(tag)) return
+    onUpdate({ amenities: [...room.amenities, tag] })
+    setCustomAmenity('')
+  }
+
+  const addPriceOption = (group: 'viewOptions' | 'mealOptions', label: string, delta: string) => {
+    if (!label.trim() || delta === '') return
+    const option: PriceOption = { id: newId(), label: label.trim(), priceDelta: Number(delta) }
+    onUpdate({ [group]: [...room[group], option] } as Partial<RoomType>)
+  }
+
+  const removePriceOption = (group: 'viewOptions' | 'mealOptions', id: string) => {
+    onUpdate({ [group]: room[group].filter(o => o.id !== id) } as Partial<RoomType>)
+  }
+
+  return (
+    <div className="border border-gray-100 rounded-2xl overflow-hidden">
+      <div className="p-5 flex items-center gap-4 flex-wrap">
+        <input
+          value={room.name}
+          onChange={e => onUpdate({ name: e.target.value })}
+          className="font-semibold text-gray-900 bg-transparent border-b-2 border-transparent hover:border-gray-200 focus:border-primary focus:outline-none flex-1 min-w-[140px]"
+        />
+        <div className="flex items-center gap-1 text-sm text-gray-600">
+          <span>₹</span>
+          <input
+            type="number"
+            min="0"
+            value={room.basePrice}
+            onChange={e => onUpdate({ basePrice: Number(e.target.value) })}
+            className="w-20 bg-gray-50 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <span className="text-gray-400">/ night</span>
+        </div>
+        <div className="flex items-center gap-1 text-sm text-gray-600">
+          <input
+            type="number"
+            min="1"
+            value={room.totalInventory}
+            onChange={e => onUpdate({ totalInventory: Number(e.target.value) })}
+            className="w-14 bg-gray-50 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <span className="text-gray-400">rooms</span>
+        </div>
+        <button onClick={onToggleExpand} className="text-sm text-primary font-medium hover:underline">
+          {expanded ? 'Done' : 'Edit details'}
+        </button>
+        <button onClick={onRemove} className="text-gray-300 hover:text-primary transition-colors">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {!expanded && (room.amenities.length > 0 || room.viewOptions.length > 0 || room.mealOptions.length > 0) && (
+        <div className="px-5 pb-4 flex flex-wrap gap-2">
+          {room.amenities.map(a => (
+            <span key={a} className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">{a}</span>
+          ))}
+          {[...room.viewOptions, ...room.mealOptions].map(o => (
+            <span key={o.id} className="text-xs bg-primary-pale text-primary px-2.5 py-1 rounded-full">
+              {o.label} +₹{o.priceDelta}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {expanded && (
+        <div className="px-5 pb-5 pt-1 border-t border-gray-50 space-y-5">
+          {/* Basic info tags */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Basic info</p>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {SUGGESTED_AMENITIES.map(tag => {
+                const active = room.amenities.includes(tag)
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => toggleAmenity(tag)}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                      active
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-primary'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                )
+              })}
+              {room.amenities
+                .filter(a => !SUGGESTED_AMENITIES.includes(a))
+                .map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => toggleAmenity(tag)}
+                    className="text-xs px-3 py-1.5 rounded-full bg-primary text-white border border-primary"
+                  >
+                    {tag} ×
+                  </button>
+                ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={customAmenity}
+                onChange={e => setCustomAmenity(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomAmenity() } }}
+                placeholder="Add custom detail…"
+                className="flex-1 border-2 border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:border-primary focus:outline-none"
+              />
+              <button
+                onClick={addCustomAmenity}
+                className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          {/* Price options */}
+          <PriceOptionGroup
+            title="View"
+            options={room.viewOptions}
+            label={viewLabel}
+            delta={viewDelta}
+            onLabelChange={setViewLabel}
+            onDeltaChange={setViewDelta}
+            onAdd={() => { addPriceOption('viewOptions', viewLabel, viewDelta); setViewLabel(''); setViewDelta('') }}
+            onRemove={id => removePriceOption('viewOptions', id)}
+            placeholder="Sea View"
+          />
+          <PriceOptionGroup
+            title="Meal Plan"
+            options={room.mealOptions}
+            label={mealLabel}
+            delta={mealDelta}
+            onLabelChange={setMealLabel}
+            onDeltaChange={setMealDelta}
+            onAdd={() => { addPriceOption('mealOptions', mealLabel, mealDelta); setMealLabel(''); setMealDelta('') }}
+            onRemove={id => removePriceOption('mealOptions', id)}
+            placeholder="Breakfast Included"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PriceOptionGroup({
+  title,
+  options,
+  label,
+  delta,
+  onLabelChange,
+  onDeltaChange,
+  onAdd,
+  onRemove,
+  placeholder,
+}: {
+  title: string
+  options: PriceOption[]
+  label: string
+  delta: string
+  onLabelChange: (v: string) => void
+  onDeltaChange: (v: string) => void
+  onAdd: () => void
+  onRemove: (id: string) => void
+  placeholder: string
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-gray-500 mb-2">{title} price options</p>
+      {options.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {options.map(o => (
+            <button
+              key={o.id}
+              onClick={() => onRemove(o.id)}
+              className="text-xs px-3 py-1.5 rounded-full bg-primary-pale text-primary border border-red-100"
+            >
+              {o.label} +₹{o.priceDelta} ×
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input
+          value={label}
+          onChange={e => onLabelChange(e.target.value)}
+          placeholder={placeholder}
+          className="flex-1 border-2 border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:border-primary focus:outline-none"
+        />
+        <input
+          type="number"
+          value={delta}
+          onChange={e => onDeltaChange(e.target.value)}
+          placeholder="+₹"
+          className="w-20 border-2 border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:border-primary focus:outline-none"
+        />
+        <button
+          onClick={onAdd}
+          className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  )
+}
