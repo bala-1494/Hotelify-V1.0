@@ -46,6 +46,33 @@ per-room availability). The terminal step `POST /api/bookings` creates a real
 only when confirmed bookings exhaust its inventory for the dates, or the owner's
 availability toggle is off — pending requests never hold inventory.
 
+### Operations half (S2.x)
+Schema: `supabase/migrations/0002_operations.sql` adds booking-transition fields
+(`note`, `decided_at/by`, `reject_reason`, `checkin_token`, `checked_in_at`), the
+`room_status` enum + `rooms.status`, a `notifications` queue, and the atomic
+`accept_booking` / `create_manual_booking` SQL functions that own all
+inventory-decrement logic. `lib/ops.ts` is the ops data layer; `authorizeOps()` in
+`lib/apiAuth.ts` resolves the actor's hotel+role and gates every ops route through
+`can()`.
+
+**Write boundary (ops half):** writes booking status TRANSITIONS, all inventory
+effects, `memberships`, `rooms`, `notifications`, and NEW `bookings` with
+`status='confirmed'` (manual only). Never writes `hotels`, `room_types`, `themes`,
+`photos` — reads them only.
+
+- **Accept (S2.2):** `accept_booking()` locks the room_type row, counts holding
+  bookings (confirmed/id_submitted/checked_in) overlapping the span, confirms iff a
+  unit is free (else returns `full` → UI offers reassign/reject).
+- **Reject (S2.3):** pending→rejected with a reason, queues a notification.
+- **Manual (S2.4):** `create_manual_booking()` inserts a `confirmed`/`manual` row
+  after the same atomic capacity check.
+- **Team (S2.5/S2.6):** invite = insert a `memberships` row keyed by email; the
+  invitee joins on next login. `can()` enforces Manager-can't-touch-Owner/Manager.
+- **Landing (S2.6):** `landingPath(role)` — Owner/Manager → dashboard, Front-desk →
+  bookings, Housekeeping → rooms.
+- **Phase-2 scaffold (S2.7):** `app/checkin/[token]` stub, `rooms.status` board
+  (dirty→cleaning→ready), `seedRoomsFromTypes()`. No full ID-upload loop.
+
 ### API Routes
 | Route | Method | Purpose |
 |---|---|---|
@@ -60,6 +87,18 @@ availability toggle is off — pending requests never hold inventory.
 | `/api/hotels/[id]/photos/[photoId]` | DELETE | Remove a photo |
 | `/api/book/[subdomain]` | GET | Public booking page + availability |
 | `/api/bookings` | POST | Guest request-to-book (pending, guest source) |
+| `/api/ops/bookings` | GET | Bookings inbox (filters: status/room/date) |
+| `/api/ops/bookings/[id]/accept` | POST | Accept (atomic inventory check) |
+| `/api/ops/bookings/[id]/reject` | POST | Reject with reason |
+| `/api/ops/bookings/[id]/checkin` | POST | confirmed → checked_in |
+| `/api/ops/bookings/manual` | POST | Manual booking → confirmed |
+| `/api/ops/room-types` | GET | Room types for filters / manual form |
+| `/api/ops/team` | GET/POST | Roster / invite by email + role |
+| `/api/ops/team/[id]` | PATCH/DELETE | Change role / remove member |
+| `/api/ops/rooms` | GET | Room-status board |
+| `/api/ops/rooms/[id]` | PATCH | Set room status |
+| `/api/ops/rooms/seed` | POST | Generate rooms from inventory |
+| `/api/checkin/[token]` | GET | Public check-in stub lookup |
 
 ### Key Files
 ```
@@ -69,6 +108,10 @@ app/
   dashboard/page.tsx      — hotel card + first-run checklist
   hotel/[id]/page.tsx     — owner console (edit fields/photos/theme/rooms)
   book/[subdomain]/page.tsx — guest booking + availability
+  bookings/page.tsx       — ops bookings inbox (S2.1-S2.4)
+  team/page.tsx           — team + invite + roles (S2.5/S2.6)
+  rooms/page.tsx          — housekeeping room board (S2.7)
+  checkin/[token]/page.tsx — check-in stub (S2.7)
   api/…                   — see table above
 components/
   AuthProvider.tsx        — auth context {user, role, hotelId}
@@ -77,16 +120,21 @@ components/
   ThemePicker.tsx         — theme picker + live preview + publish (S1.3)
   EditableField.tsx       — inline field editing (S1.4)
   RoomTypesEditor.tsx     — room types + availability toggle (S1.6)
+  ops/BookingCard.tsx     — inbox card + accept/reject/checkin (S2.1-S2.3)
+  ops/ManualBookingModal.tsx — manual booking form (S2.4)
 lib/
   supabase/server.ts      — service-role client + bucket name
-  db.ts                   — all DB helpers (row<->type mapping)
-  permissions.ts          — can(user, action, resource)
+  db.ts                   — storefront DB helpers (row<->type mapping)
+  ops.ts                  — operations DB layer (transitions/team/rooms)
+  permissions.ts          — can(user, action, resource) + landingPath()
   apiClient.ts / apiAuth.ts — client fetch + server auth helpers
   themes.ts               — theme presets (mirror themes table)
 hooks/
   useHotels.ts            — Supabase-backed owner hotel
 supabase/
-  migrations/0001_foundation.sql — schema + seed themes
+  migrations/0001_foundation.sql  — storefront schema
+  migrations/0002_operations.sql  — ops schema + inventory functions
+  seed_dev.sql            — dev-only mock staff + bookings
 ```
 
 ## Environment Variables
@@ -107,8 +155,9 @@ public key to Maps Embed API.
 npm install
 cp .env.example .env.local
 # Add API keys + Supabase URL/service-role key to .env.local
-# Run supabase/migrations/0001_foundation.sql in the Supabase SQL editor
+# Run supabase/migrations/0001_foundation.sql then 0002_operations.sql in the SQL editor
 # Create a public Storage bucket named `hotel-photos`
+# (optional) Run supabase/seed_dev.sql after onboarding for mock staff + bookings
 npm run dev
 ```
 
@@ -116,6 +165,7 @@ npm run dev
 
 - [ ] Real Google OAuth (NextAuth.js)
 - [x] Database persistence (Supabase)
+- [x] Booking inbox + accept/reject + manual bookings + team roles
 - [ ] AI-generated room/property descriptions
 - [ ] Booking engine integration
 - [ ] Multi-property analytics dashboard

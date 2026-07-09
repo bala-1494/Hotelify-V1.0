@@ -3,9 +3,10 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
+import { landingPath } from '@/lib/permissions'
 
 export default function RootPage() {
-  const { user, hotelId, loading, membershipLoading } = useAuth()
+  const { user, role, hotelId, loading, membershipLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
@@ -14,10 +15,17 @@ export default function RootPage() {
       router.replace('/login')
       return
     }
-    // Wait until we know whether this owner has a hotel yet.
+    // Wait until we know the user's membership (hotel + role).
     if (membershipLoading) return
-    router.replace(hotelId ? '/dashboard' : '/onboarding')
-  }, [user, hotelId, loading, membershipLoading, router])
+    // No hotel yet => this is an owner who hasn't onboarded.
+    if (!hotelId) {
+      router.replace('/onboarding')
+      return
+    }
+    // Role-based landing (S2.6): Owner/Manager -> dashboard, Front-desk ->
+    // bookings, Housekeeping -> rooms.
+    router.replace(landingPath(role))
+  }, [user, role, hotelId, loading, membershipLoading, router])
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center">

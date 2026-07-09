@@ -35,3 +35,31 @@ export async function authorizeContent(
   }
   return { ctx: { user, role: role as Role } }
 }
+
+export interface ActorContext {
+  user: AuthUser
+  role: Role
+  hotelId: string
+}
+
+// Authorize an operations action. Unlike content actions (scoped to a hotel id
+// in the URL), ops actions run against the actor's OWN hotel, resolved from
+// their membership. `targetRole` is required for team actions so the gate can
+// enforce Manager-can't-touch-Owner/Manager rules.
+export async function authorizeOps(
+  req: Request,
+  action: Action,
+  opts: { targetRole?: Role | null } = {}
+): Promise<{ error: NextResponse } | { ctx: ActorContext }> {
+  const user = userFromRequest(req)
+  if (!user) return { error: NextResponse.json({ error: 'Not signed in' }, { status: 401 }) }
+
+  const membership = await getMembership(user.email)
+  if (!membership) return { error: NextResponse.json({ error: 'No hotel membership' }, { status: 403 }) }
+
+  const { hotelId, role } = membership
+  if (!can(user, action, { hotelId, role, targetRole: opts.targetRole ?? null })) {
+    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  }
+  return { ctx: { user, role, hotelId } }
+}

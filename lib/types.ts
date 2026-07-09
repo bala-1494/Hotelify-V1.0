@@ -70,3 +70,71 @@ export interface RoomAvailability {
   available: number     // totalInventory - bookedUnits (never negative)
   isAvailable: boolean  // available > 0 AND owner toggle on
 }
+
+// ---------------------------------------------------------------------------
+// Operations-half types (bookings inbox, team, rooms)
+// ---------------------------------------------------------------------------
+
+export type BookingStatus =
+  | 'pending' | 'confirmed' | 'id_submitted' | 'checked_in'
+  | 'completed' | 'rejected' | 'cancelled'
+
+export interface Booking {
+  id: string
+  hotelId: string
+  roomTypeId: string
+  roomTypeName: string
+  status: BookingStatus
+  source: string        // guest | manual | staff
+  guestName: string
+  guestEmail: string
+  checkIn: string
+  checkOut: string
+  viewOptionId?: string | null
+  mealOptionId?: string | null
+  nights: number
+  totalPrice: number
+  note?: string | null
+  rejectReason?: string | null
+  createdAt: string
+  decidedAt?: string | null
+  checkinToken?: string | null
+}
+
+export type MemberRole = 'owner' | 'manager' | 'front_desk' | 'housekeeping'
+
+export interface Member {
+  id: string
+  email: string
+  role: MemberRole
+  createdAt: string
+  isSelf?: boolean
+}
+
+export type RoomStatusValue = 'dirty' | 'cleaning' | 'ready'
+
+export interface Room {
+  id: string
+  roomTypeId: string
+  roomTypeName: string
+  label: string
+  status: RoomStatusValue
+}
+
+// Lightweight room type used by ops (inbox filter + manual booking form).
+export interface RoomTypeLite {
+  id: string
+  name: string
+  basePrice: number
+  totalInventory: number
+  available: boolean
+  viewOptions: { id: string; label: string; priceDelta: number }[]
+  mealOptions: { id: string; label: string; priceDelta: number }[]
+}
+
+// Result of an accept attempt (S2.2). reason='full' means inventory exhausted.
+export interface AcceptResult {
+  ok: boolean
+  reason: string | null
+  token?: string | null
+}
