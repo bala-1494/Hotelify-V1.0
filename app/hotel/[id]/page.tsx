@@ -48,8 +48,17 @@ export default function HotelPage() {
   }
 
   const photo = (ref: string, w = 1200) => photoUrl(ref, w)
-  const mapsEmbedKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
   const isMock = hotel.id.startsWith('mock-')
+
+  // Classic keyless Google Maps embed: unlike the Maps Embed API
+  // (maps/embed/v1/place), this needs no API key and no separately-enabled
+  // "Maps Embed API", so it can't fail with "This API is not activated".
+  const hasCoords =
+    Number.isFinite(hotel.lat) && Number.isFinite(hotel.lng) && (hotel.lat !== 0 || hotel.lng !== 0)
+  const mapQuery = hasCoords
+    ? `${hotel.lat},${hotel.lng} (${hotel.name})`
+    : `${hotel.name} ${hotel.address}`
+  const mapSrc = `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=15&output=embed`
 
   return (
     <div className="min-h-screen bg-white">
@@ -226,19 +235,14 @@ export default function HotelPage() {
             {/* Map */}
             <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
               <div className="h-52 bg-gray-100">
-                {mapsEmbedKey ? (
-                  <iframe
-                    src={`https://www.google.com/maps/embed/v1/place?key=${mapsEmbedKey}&q=place_id:${hotel.id}`}
-                    className="w-full h-full border-0"
-                    allowFullScreen
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
-                    Map preview requires API key
-                  </div>
-                )}
+                <iframe
+                  title={`Map showing ${hotel.name}`}
+                  src={mapSrc}
+                  className="w-full h-full border-0"
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
               </div>
               <div className="p-4">
                 <p className="text-sm font-medium text-gray-900">{hotel.address}</p>
