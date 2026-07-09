@@ -1,5 +1,6 @@
 import { Hotel, Review } from './types'
 import { parseMapsUrl } from './places'
+import { DEFAULT_THEME_ID } from './themes'
 
 // Deterministic hash so the same pasted URL always regenerates the same
 // mock hotel (id, photos, reviews) instead of creating a new one each time.
@@ -102,7 +103,11 @@ export function generateMockHotel(url: string): Hotel {
     addedAt: new Date().toISOString(),
     mapsUrl: url,
     priceLevel: 1 + (seed % 4),
-    subdomain: '', // backfilled uniquely by useHotels() on save
+    subdomain: '', // backfilled uniquely when the hotel is persisted
     roomTypes: [],
+    // Owner-configurable presentation fields; seeded server-side on save.
+    photos: [],
+    themeId: DEFAULT_THEME_ID,
+    published: false,
   }
 }

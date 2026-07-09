@@ -40,6 +40,7 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
       amenities: [],
       viewOptions: [],
       mealOptions: [],
+      available: true,
     }
     onChange([...roomTypes, room])
     setName('')
@@ -206,6 +207,22 @@ function RoomTypeCard({
           />
           <span className="text-gray-400">rooms</span>
         </div>
+        <label className="flex items-center gap-2 text-sm select-none cursor-pointer" title="When off, guests can't book this room regardless of inventory">
+          <span className={room.available ? 'text-gray-600' : 'text-gray-400'}>
+            {room.available ? 'Available' : 'Unavailable'}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={room.available}
+            onClick={() => onUpdate({ available: !room.available })}
+            className={`relative w-10 h-5 rounded-full transition-colors ${room.available ? 'bg-primary' : 'bg-gray-300'}`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${room.available ? 'translate-x-5' : ''}`}
+            />
+          </button>
+        </label>
         <button onClick={onToggleExpand} className="text-sm text-primary font-medium hover:underline">
           {expanded ? 'Done' : 'Edit details'}
         </button>
