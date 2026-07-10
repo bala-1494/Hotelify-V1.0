@@ -1,58 +1,71 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Hotel } from '@/lib/types'
-import { uniqueSubdomain } from '@/lib/slug'
+import { DEFAULT_THEME_ID } from '@/lib/themes'
+import { useAuth } from '@/components/AuthProvider'
+import { apiFetch, apiJson } from '@/lib/apiClient'
 
-const STORAGE_KEY = 'hotelify_hotels'
-
-// Backfills fields added after a hotel was first saved, so records created
-// before subdomain/roomTypes existed keep working without a migration step.
-function normalize(hotel: Hotel, subdomainsInUse: string[]): Hotel {
+// Backfills fields added after a hotel was first saved, so older records keep
+// working. The server assembles most of this now; normalize() guards the client
+// against missing optional fields.
+function normalize(hotel: Hotel): Hotel {
   return {
     ...hotel,
-    subdomain: hotel.subdomain || uniqueSubdomain(hotel.name, subdomainsInUse),
-    roomTypes: hotel.roomTypes || [],
+    roomTypes: (hotel.roomTypes || []).map(r => ({ ...r, available: r.available ?? true })),
+    photos: hotel.photos || [],
+    photoReferences: hotel.photoReferences || [],
+    themeId: hotel.themeId || DEFAULT_THEME_ID,
+    published: hotel.published ?? false,
   }
 }
 
+// Supabase-backed, owner-scoped. Returns the signed-in owner's single hotel
+// (one-per-owner), so `hotels` holds 0 or 1 entries.
 export function useHotels() {
+  const { user, refreshMembership } = useAuth()
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [loaded, setLoaded] = useState(false)
 
+  const refresh = useCallback(async () => {
+    if (!user) {
+      setHotels([])
+      setLoaded(true)
+      return
+    }
+    try {
+      const { hotel } = await apiJson<{ hotel: Hotel | null }>('/api/hotels')
+      setHotels(hotel ? [normalize(hotel)] : [])
+    } catch {
+      setHotels([])
+    } finally {
+      setLoaded(true)
+    }
+  }, [user])
+
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (!stored) { setLoaded(true); return }
-    const parsed: Hotel[] = JSON.parse(stored)
-    const used: string[] = []
-    const normalized = parsed.map(h => {
-      const n = normalize(h, used)
-      used.push(n.subdomain)
-      return n
+    setLoaded(false)
+    refresh()
+  }, [refresh])
+
+  // Create the owner's hotel. Throws on the one-hotel-per-owner guard (409).
+  const addHotel = async (hotel: Hotel): Promise<Hotel> => {
+    const res = await apiFetch('/api/hotels', {
+      method: 'POST',
+      body: JSON.stringify({ hotel }),
     })
-    setHotels(normalized)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
-    setLoaded(true)
-  }, [])
-
-  const persist = (updated: Hotel[]) => {
-    setHotels(updated)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const err: any = new Error(data?.error || 'Failed to create hotel')
+      err.status = res.status
+      err.hotelId = data?.hotelId
+      throw err
+    }
+    const created = normalize(data.hotel)
+    setHotels([created])
+    await refreshMembership()
+    return created
   }
 
-  const addHotel = (hotel: Hotel) => {
-    const withDefaults = normalize(hotel, hotels.map(h => h.subdomain))
-    const updated = [withDefaults, ...hotels.filter(h => h.id !== hotel.id)]
-    persist(updated)
-  }
-
-  const updateHotel = (id: string, patch: Partial<Hotel>) => {
-    persist(hotels.map(h => (h.id === id ? { ...h, ...patch } : h)))
-  }
-
-  const removeHotel = (id: string) => {
-    persist(hotels.filter(h => h.id !== id))
-  }
-
-  return { hotels, loaded, addHotel, updateHotel, removeHotel }
+  return { hotels, loaded, addHotel, refresh }
 }

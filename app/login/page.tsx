@@ -9,12 +9,13 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && user) router.push('/dashboard')
+    // Let the root router decide onboarding vs dashboard based on membership.
+    if (!loading && user) router.push('/')
   }, [user, loading, router])
 
   const handleSignIn = () => {
     signIn()
-    router.push('/dashboard')
+    router.push('/')
   }
 
   if (loading) return null
