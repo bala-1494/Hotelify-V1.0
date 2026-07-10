@@ -31,7 +31,7 @@ exception when duplicate_object then null; end $$;
 create table if not exists themes (
   id          text primary key,           -- stable key, e.g. 'classic-red'
   name        text not null,
-  primary     text not null,              -- hex, e.g. '#C41E3A'
+  "primary"   text not null,              -- hex, e.g. '#C41E3A' ("primary" is a reserved word — must be quoted)
   primary_dark text not null,
   accent      text not null,
   surface     text not null default '#ffffff',
