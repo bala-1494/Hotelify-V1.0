@@ -7,11 +7,27 @@ const SUGGESTED_AMENITIES = ['AC', 'Geyser', 'WiFi', 'TV', 'Balcony', 'Attached 
 
 interface Props {
   roomTypes: RoomType[]
-  onChange: (roomTypes: RoomType[]) => void
+  onChange: (roomTypes: RoomType[]) => void | Promise<void>
 }
 
-function newId() {
-  return crypto.randomUUID()
+// UUID v4 generator that never throws. `crypto.randomUUID()` only exists in
+// secure contexts (HTTPS / localhost), so on a plain-HTTP host it's undefined
+// and calling it crashes the add-room handler. Fall back to `getRandomValues`
+// and finally to Math.random so the editor works everywhere.
+function newId(): string {
+  const c: Crypto | undefined = typeof crypto !== 'undefined' ? crypto : undefined
+  if (c?.randomUUID) return c.randomUUID()
+  const bytes = new Uint8Array(16)
+  if (c?.getRandomValues) {
+    c.getRandomValues(bytes)
+  } else {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256)
+  }
+  // Set version (4) and variant bits per RFC 4122.
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0'))
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`
 }
 
 export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
@@ -20,6 +36,8 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
   const [price, setPrice] = useState('')
   const [inventory, setInventory] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const update = (id: string, patch: Partial<RoomType>) => {
     onChange(roomTypes.map(r => (r.id === id ? { ...r, ...patch } : r)))
@@ -29,9 +47,9 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
     onChange(roomTypes.filter(r => r.id !== id))
   }
 
-  const submitAdd = (e: React.FormEvent) => {
+  const submitAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !price || !inventory) return
+    if (!name.trim() || !price || !inventory || saving) return
     const room: RoomType = {
       id: newId(),
       name: name.trim(),
@@ -42,12 +60,22 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
       mealOptions: [],
       available: true,
     }
-    onChange([...roomTypes, room])
-    setName('')
-    setPrice('')
-    setInventory('')
-    setShowAddForm(false)
-    setExpandedId(room.id)
+    setSaving(true)
+    setError(null)
+    try {
+      // Wait for the save so the new room is in the list before we expand it,
+      // and so a failed save surfaces instead of silently doing nothing.
+      await onChange([...roomTypes, room])
+      setName('')
+      setPrice('')
+      setInventory('')
+      setShowAddForm(false)
+      setExpandedId(room.id)
+    } catch (err: any) {
+      setError(err?.message || 'Could not add the room type. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -101,19 +129,23 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={!name.trim() || !price || !inventory}
+              disabled={!name.trim() || !price || !inventory || saving}
               className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-dark transition-colors disabled:opacity-50"
             >
-              Add
+              {saving ? 'Adding…' : 'Add'}
             </button>
             <button
               type="button"
-              onClick={() => setShowAddForm(false)}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+              onClick={() => { setShowAddForm(false); setError(null) }}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
           </div>
+          {error && (
+            <p className="w-full text-sm text-primary mt-1" role="alert">{error}</p>
+          )}
         </form>
       )}
 
