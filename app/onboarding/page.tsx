@@ -11,7 +11,7 @@ import { photoUrl } from '@/lib/photo'
 
 type Step = 'import' | 'confirm' | 'generating'
 
-const PRICE = ['', '$', '$$', '$$$', '$$$$']
+const PRICE = ['', '₹', '₹₹', '₹₹₹', '₹₹₹₹']
 
 // Ensure an imported hotel object satisfies the current Hotel shape before we
 // preview/persist it (older import paths omit the presentation fields).
