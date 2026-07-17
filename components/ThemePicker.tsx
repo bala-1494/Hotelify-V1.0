@@ -7,14 +7,18 @@ import { THEMES, getTheme, themeVars } from '@/lib/themes'
 // Theme picker + live preview pane + publish toggle (S1.3). Selecting a theme
 // updates the preview instantly and persists via onSelectTheme. The publish
 // toggle flips hotels.published.
+//
+// In the setup wizard (S1.7) publishing is its own step, so `hidePublish` drops
+// the toggle here and the theme step shows swatches + preview only.
 
 interface Props {
   hotel: Hotel
   onSelectTheme: (themeId: string) => Promise<void>
-  onTogglePublish: (published: boolean) => Promise<void>
+  onTogglePublish?: (published: boolean) => Promise<void>
+  hidePublish?: boolean
 }
 
-export default function ThemePicker({ hotel, onSelectTheme, onTogglePublish }: Props) {
+export default function ThemePicker({ hotel, onSelectTheme, onTogglePublish, hidePublish }: Props) {
   // Optimistic local selection for instant preview; persisted in the background.
   const [selectedId, setSelectedId] = useState(hotel.themeId)
   const [saving, setSaving] = useState(false)
@@ -34,6 +38,7 @@ export default function ThemePicker({ hotel, onSelectTheme, onTogglePublish }: P
   }
 
   const togglePublish = async () => {
+    if (!onTogglePublish) return
     setPublishing(true)
     try {
       await onTogglePublish(!hotel.published)
@@ -45,7 +50,9 @@ export default function ThemePicker({ hotel, onSelectTheme, onTogglePublish }: P
   return (
     <section id="theme">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Theme &amp; publishing</h2>
+        <h2 className="text-2xl font-bold text-gray-900">
+          {hidePublish ? 'Theme' : 'Theme & publishing'}
+        </h2>
         {saving && <span className="text-xs text-gray-400">Saving…</span>}
       </div>
 
@@ -76,6 +83,7 @@ export default function ThemePicker({ hotel, onSelectTheme, onTogglePublish }: P
           </div>
 
           {/* Publish toggle */}
+          {!hidePublish && (
           <div className="mt-6 p-4 rounded-xl border border-gray-100 bg-gray-50 flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-gray-900">
@@ -104,6 +112,7 @@ export default function ThemePicker({ hotel, onSelectTheme, onTogglePublish }: P
               />
             </button>
           </div>
+          )}
         </div>
 
         {/* Live preview */}
