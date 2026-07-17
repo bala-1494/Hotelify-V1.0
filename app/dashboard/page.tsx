@@ -104,7 +104,12 @@ export default function DashboardPage() {
               <span>{hotel.roomTypes.length} room type{hotel.roomTypes.length === 1 ? '' : 's'}</span>
               <span>{hotel.photos.filter(p => !p.hidden).length} photos</span>
             </div>
-            <span className="inline-block mt-4 text-primary font-medium text-sm">Manage hotel →</span>
+            <button
+              onClick={e => { e.stopPropagation(); router.push(`/hotel/${hotel.id}`) }}
+              className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors"
+            >
+              {hotel.published ? 'Edit hotel' : 'Continue setup'} →
+            </button>
           </div>
         </div>
       </main>
