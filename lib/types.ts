@@ -17,6 +17,10 @@ export interface Hotel {
   priceLevel?: number
   subdomain: string
   roomTypes: RoomType[]
+  // Hotel-level shared add-on pools (S1.7 revision). View + Meal-plan options are
+  // defined once per hotel with a single price each; room types opt in by id.
+  viewOptions: PriceOption[]
+  mealOptions: PriceOption[]
   // Owner-configurable presentation (S1.2 / S1.3)
   photos: Photo[]
   themeId: string
@@ -35,8 +39,9 @@ export interface RoomType {
   basePrice: number
   totalInventory: number
   amenities: string[]
-  viewOptions: PriceOption[]
-  mealOptions: PriceOption[]
+  // Opted-in subset of the hotel's shared View / Meal-plan pools (by option id).
+  viewOptionIds: string[]
+  mealOptionIds: string[]
   // S1.6 owner availability toggle — when false the room is hidden from guests
   // regardless of confirmed-booking inventory math.
   available: boolean

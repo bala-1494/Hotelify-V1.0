@@ -73,19 +73,41 @@ export default function HotelSetupWizardPage() {
 
   // ---- mutations -----------------------------------------------------------
   const patchHotel = async (patch: Record<string, any>) => {
-    const { hotel } = await apiJson<{ hotel: Hotel }>(`/api/hotels/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(patch),
-    })
-    setHotel(hotel)
+    // Optimistically apply the patch so instant controls (price-level buttons,
+    // theme swatches, publish toggle) reflect the change immediately instead of
+    // waiting on the PATCH round-trip. Reconcile with the server row on success,
+    // and roll back to the prior state on failure (EditableField relies on the
+    // throw to reset its own draft).
+    const prev = hotel
+    setHotel(h => (h ? { ...h, ...patch } : h))
+    try {
+      const { hotel } = await apiJson<{ hotel: Hotel }>(`/api/hotels/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      })
+      setHotel(hotel)
+    } catch (e) {
+      setHotel(prev)
+      throw e
+    }
   }
 
   const saveRoomTypes = async (roomTypes: RoomType[]) => {
-    const { hotel } = await apiJson<{ hotel: Hotel }>(`/api/hotels/${id}/room-types`, {
-      method: 'PUT',
-      body: JSON.stringify({ roomTypes }),
-    })
-    setHotel(hotel)
+    // Optimistic, same as patchHotel: the room-type editor's amenity chips,
+    // toggles and price fields render off hotel.roomTypes, so reflect the change
+    // locally right away instead of waiting on the PUT round-trip.
+    const prev = hotel
+    setHotel(h => (h ? { ...h, roomTypes } : h))
+    try {
+      const { hotel } = await apiJson<{ hotel: Hotel }>(`/api/hotels/${id}/room-types`, {
+        method: 'PUT',
+        body: JSON.stringify({ roomTypes }),
+      })
+      setHotel(hotel)
+    } catch (e) {
+      setHotel(prev)
+      throw e
+    }
   }
 
   const savePhotoMeta = async (photos: { id: string; order: number; hidden: boolean; isCover: boolean }[]) => {
@@ -254,7 +276,13 @@ export default function HotelSetupWizardPage() {
           )}
 
           {active.key === 'rooms' && (
-            <RoomTypesEditor roomTypes={hotel.roomTypes} onChange={saveRoomTypes} />
+            <RoomTypesEditor
+              roomTypes={hotel.roomTypes}
+              onChange={saveRoomTypes}
+              viewOptions={hotel.viewOptions}
+              mealOptions={hotel.mealOptions}
+              onChangeOptions={patch => patchHotel(patch)}
+            />
           )}
 
           {active.key === 'theme' && (

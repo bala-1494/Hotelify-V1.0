@@ -1,7 +1,7 @@
 import 'server-only'
 import { supabaseAdmin } from './supabase/server'
 import { DEFAULT_THEME_ID } from './themes'
-import type { Hotel, RoomType, Photo, Review, RoomAvailability } from './types'
+import type { Hotel, RoomType, Photo, Review, RoomAvailability, PriceOption } from './types'
 import { visiblePhotos } from './photo'
 
 // ---------------------------------------------------------------------------
@@ -27,6 +27,8 @@ interface HotelRow {
   subdomain: string
   theme_id: string | null
   published: boolean
+  view_options: PriceOption[] | null
+  meal_options: PriceOption[] | null
   created_at: string
 }
 
@@ -37,8 +39,8 @@ function mapRoomType(r: any): RoomType {
     basePrice: Number(r.base_price),
     totalInventory: Number(r.total_inventory),
     amenities: r.amenities ?? [],
-    viewOptions: r.view_options ?? [],
-    mealOptions: r.meal_options ?? [],
+    viewOptionIds: r.view_option_ids ?? [],
+    mealOptionIds: r.meal_option_ids ?? [],
     available: r.available ?? true,
   }
 }
@@ -80,6 +82,8 @@ function assembleHotel(row: HotelRow, roomTypeRows: any[], photoRows: any[]): Ho
     addedAt: row.created_at,
     themeId: row.theme_id ?? DEFAULT_THEME_ID,
     published: row.published,
+    viewOptions: row.view_options ?? [],
+    mealOptions: row.meal_options ?? [],
     roomTypes: roomTypeRows.sort((a, b) => a.sort_order - b.sort_order).map(mapRoomType),
     photos,
     photoReferences,
@@ -184,6 +188,8 @@ export async function createHotelForOwner(input: Hotel, ownerEmail: string): Pro
     subdomain,
     theme_id: DEFAULT_THEME_ID,
     published: false,
+    view_options: input.viewOptions ?? [],
+    meal_options: input.mealOptions ?? [],
   })
   if (hErr) throw hErr
 
@@ -246,6 +252,8 @@ export interface HotelPatch {
   priceLevel?: number | null
   themeId?: string
   published?: boolean
+  viewOptions?: PriceOption[]
+  mealOptions?: PriceOption[]
 }
 
 export async function updateHotel(id: string, patch: HotelPatch): Promise<Hotel> {
@@ -259,6 +267,8 @@ export async function updateHotel(id: string, patch: HotelPatch): Promise<Hotel>
   if (patch.priceLevel !== undefined) row.price_level = patch.priceLevel
   if (patch.themeId !== undefined) row.theme_id = patch.themeId
   if (patch.published !== undefined) row.published = patch.published
+  if (patch.viewOptions !== undefined) row.view_options = patch.viewOptions
+  if (patch.mealOptions !== undefined) row.meal_options = patch.mealOptions
 
   if (Object.keys(row).length > 0) {
     const { error } = await db.from('hotels').update(row).eq('id', id)
@@ -293,8 +303,8 @@ export async function replaceRoomTypes(hotelId: string, roomTypes: RoomType[]): 
       base_price: r.basePrice,
       total_inventory: r.totalInventory,
       amenities: r.amenities ?? [],
-      view_options: r.viewOptions ?? [],
-      meal_options: r.mealOptions ?? [],
+      view_option_ids: r.viewOptionIds ?? [],
+      meal_option_ids: r.mealOptionIds ?? [],
       available: r.available ?? true,
       sort_order: i,
     }))

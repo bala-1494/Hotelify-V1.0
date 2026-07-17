@@ -21,7 +21,14 @@ function withDefaults(h: Hotel): Hotel {
     photos: h.photos ?? [],
     themeId: h.themeId ?? DEFAULT_THEME_ID,
     published: h.published ?? false,
-    roomTypes: (h.roomTypes ?? []).map(r => ({ ...r, available: r.available ?? true })),
+    viewOptions: h.viewOptions ?? [],
+    mealOptions: h.mealOptions ?? [],
+    roomTypes: (h.roomTypes ?? []).map(r => ({
+      ...r,
+      available: r.available ?? true,
+      viewOptionIds: r.viewOptionIds ?? [],
+      mealOptionIds: r.mealOptionIds ?? [],
+    })),
   }
 }
 
