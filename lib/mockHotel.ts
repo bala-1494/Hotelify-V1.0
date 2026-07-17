@@ -105,6 +105,8 @@ export function generateMockHotel(url: string): Hotel {
     priceLevel: 1 + (seed % 4),
     subdomain: '', // backfilled uniquely when the hotel is persisted
     roomTypes: [],
+    viewOptions: [],
+    mealOptions: [],
     // Owner-configurable presentation fields; seeded server-side on save.
     photos: [],
     themeId: DEFAULT_THEME_ID,

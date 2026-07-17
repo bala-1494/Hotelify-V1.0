@@ -93,11 +93,21 @@ export default function HotelSetupWizardPage() {
   }
 
   const saveRoomTypes = async (roomTypes: RoomType[]) => {
-    const { hotel } = await apiJson<{ hotel: Hotel }>(`/api/hotels/${id}/room-types`, {
-      method: 'PUT',
-      body: JSON.stringify({ roomTypes }),
-    })
-    setHotel(hotel)
+    // Optimistic, same as patchHotel: the room-type editor's amenity chips,
+    // toggles and price fields render off hotel.roomTypes, so reflect the change
+    // locally right away instead of waiting on the PUT round-trip.
+    const prev = hotel
+    setHotel(h => (h ? { ...h, roomTypes } : h))
+    try {
+      const { hotel } = await apiJson<{ hotel: Hotel }>(`/api/hotels/${id}/room-types`, {
+        method: 'PUT',
+        body: JSON.stringify({ roomTypes }),
+      })
+      setHotel(hotel)
+    } catch (e) {
+      setHotel(prev)
+      throw e
+    }
   }
 
   const savePhotoMeta = async (photos: { id: string; order: number; hidden: boolean; isCover: boolean }[]) => {
@@ -266,7 +276,13 @@ export default function HotelSetupWizardPage() {
           )}
 
           {active.key === 'rooms' && (
-            <RoomTypesEditor roomTypes={hotel.roomTypes} onChange={saveRoomTypes} />
+            <RoomTypesEditor
+              roomTypes={hotel.roomTypes}
+              onChange={saveRoomTypes}
+              viewOptions={hotel.viewOptions}
+              mealOptions={hotel.mealOptions}
+              onChangeOptions={patch => patchHotel(patch)}
+            />
           )}
 
           {active.key === 'theme' && (

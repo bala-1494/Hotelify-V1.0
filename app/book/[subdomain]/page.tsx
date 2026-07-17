@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { Hotel, RoomType, RoomAvailability } from '@/lib/types'
+import { Hotel, RoomType, RoomAvailability, PriceOption } from '@/lib/types'
 import { coverPhoto, resolvePhoto } from '@/lib/photo'
 import { getTheme, themeVars } from '@/lib/themes'
 
@@ -10,6 +10,11 @@ function todayStr(offsetDays = 0) {
   const d = new Date()
   d.setDate(d.getDate() + offsetDays)
   return d.toISOString().slice(0, 10)
+}
+
+// Resolve a room's opted-in ids against the hotel's shared add-on pool.
+function pickOptions(pool: PriceOption[], ids: string[]): PriceOption[] {
+  return pool.filter(o => ids.includes(o.id))
 }
 
 type Step = 'select' | 'confirm' | 'done'
@@ -84,8 +89,10 @@ export default function GuestBookingPage() {
     return diff > 0 ? diff : 1
   }, [checkIn, checkOut])
 
-  const viewDelta = selectedRoom?.viewOptions.find(o => o.id === selectedViewId)?.priceDelta ?? 0
-  const mealDelta = selectedRoom?.mealOptions.find(o => o.id === selectedMealId)?.priceDelta ?? 0
+  const selectedViewOptions = hotel && selectedRoom ? pickOptions(hotel.viewOptions, selectedRoom.viewOptionIds) : []
+  const selectedMealOptions = hotel && selectedRoom ? pickOptions(hotel.mealOptions, selectedRoom.mealOptionIds) : []
+  const viewDelta = selectedViewOptions.find(o => o.id === selectedViewId)?.priceDelta ?? 0
+  const mealDelta = selectedMealOptions.find(o => o.id === selectedMealId)?.priceDelta ?? 0
   const perNight = (selectedRoom?.basePrice ?? 0) + viewDelta + mealDelta
   const total = perNight * nights
 
@@ -296,16 +303,21 @@ export default function GuestBookingPage() {
                       </div>
                     </div>
 
-                    {active && isAvailable && (room.viewOptions.length > 0 || room.mealOptions.length > 0) && (
-                      <div className="mt-4 pt-4 border-t border-gray-50 space-y-3" onClick={e => e.stopPropagation()}>
-                        {room.viewOptions.length > 0 && (
-                          <OptionRadioGroup title="View" options={room.viewOptions} selectedId={selectedViewId} onSelect={setSelectedViewId} theme={theme} />
-                        )}
-                        {room.mealOptions.length > 0 && (
-                          <OptionRadioGroup title="Meal Plan" options={room.mealOptions} selectedId={selectedMealId} onSelect={setSelectedMealId} theme={theme} />
-                        )}
-                      </div>
-                    )}
+                    {active && isAvailable && (() => {
+                      const vo = pickOptions(hotel.viewOptions, room.viewOptionIds)
+                      const mo = pickOptions(hotel.mealOptions, room.mealOptionIds)
+                      if (vo.length === 0 && mo.length === 0) return null
+                      return (
+                        <div className="mt-4 pt-4 border-t border-gray-50 space-y-3" onClick={e => e.stopPropagation()}>
+                          {vo.length > 0 && (
+                            <OptionRadioGroup title="View" options={vo} selectedId={selectedViewId} onSelect={setSelectedViewId} theme={theme} />
+                          )}
+                          {mo.length > 0 && (
+                            <OptionRadioGroup title="Meal Plan" options={mo} selectedId={selectedMealId} onSelect={setSelectedMealId} theme={theme} />
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}

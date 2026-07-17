@@ -2,7 +2,7 @@ import 'server-only'
 import { supabaseAdmin } from './supabase/server'
 import type {
   Booking, BookingStatus, Member, MemberRole, Room, RoomStatusValue,
-  RoomTypeLite, AcceptResult,
+  RoomTypeLite, AcceptResult, PriceOption,
 } from './types'
 
 export type { RoomTypeLite, AcceptResult } from './types'
@@ -206,16 +206,26 @@ export async function createManualBooking(
 // ---------------------------------------------------------------------------
 export async function getRoomTypesForHotel(hotelId: string): Promise<RoomTypeLite[]> {
   const db = supabaseAdmin()
-  const { data, error } = await db.from('room_types').select('*').eq('hotel_id', hotelId).order('sort_order')
-  if (error) throw error
-  return (data ?? []).map(r => ({
+  // View/meal options now live once on the hotel; resolve each room's opted-in
+  // ids against those shared pools so callers still get concrete option objects.
+  const [hotelRes, rtRes] = await Promise.all([
+    db.from('hotels').select('view_options, meal_options').eq('id', hotelId).maybeSingle(),
+    db.from('room_types').select('*').eq('hotel_id', hotelId).order('sort_order'),
+  ])
+  if (hotelRes.error) throw hotelRes.error
+  if (rtRes.error) throw rtRes.error
+  const viewPool: PriceOption[] = hotelRes.data?.view_options ?? []
+  const mealPool: PriceOption[] = hotelRes.data?.meal_options ?? []
+  const pick = (pool: PriceOption[], ids: unknown) =>
+    Array.isArray(ids) ? pool.filter(o => ids.includes(o.id)) : []
+  return (rtRes.data ?? []).map(r => ({
     id: r.id,
     name: r.name,
     basePrice: Number(r.base_price),
     totalInventory: Number(r.total_inventory),
     available: r.available ?? true,
-    viewOptions: r.view_options ?? [],
-    mealOptions: r.meal_options ?? [],
+    viewOptions: pick(viewPool, r.view_option_ids),
+    mealOptions: pick(mealPool, r.meal_option_ids),
   }))
 }
 

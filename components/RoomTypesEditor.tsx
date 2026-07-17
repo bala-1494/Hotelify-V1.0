@@ -8,13 +8,23 @@ const SUGGESTED_AMENITIES = ['AC', 'Geyser', 'WiFi', 'TV', 'Balcony', 'Attached 
 interface Props {
   roomTypes: RoomType[]
   onChange: (roomTypes: RoomType[]) => void
+  // Hotel-level shared add-on pools + a saver (wired to patchHotel).
+  viewOptions: PriceOption[]
+  mealOptions: PriceOption[]
+  onChangeOptions: (patch: { viewOptions?: PriceOption[]; mealOptions?: PriceOption[] }) => void
 }
 
 function newId() {
   return crypto.randomUUID()
 }
 
-export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
+export default function RoomTypesEditor({
+  roomTypes,
+  onChange,
+  viewOptions,
+  mealOptions,
+  onChangeOptions,
+}: Props) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
@@ -29,6 +39,24 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
     onChange(roomTypes.filter(r => r.id !== id))
   }
 
+  // ---- shared option pools -------------------------------------------------
+  const addSharedOption = (group: 'viewOptions' | 'mealOptions', label: string, delta: string) => {
+    const pool = group === 'viewOptions' ? viewOptions : mealOptions
+    const option: PriceOption = { id: newId(), label: label.trim(), priceDelta: Number(delta) }
+    onChangeOptions({ [group]: [...pool, option] })
+  }
+
+  const removeSharedOption = (group: 'viewOptions' | 'mealOptions', id: string) => {
+    const pool = group === 'viewOptions' ? viewOptions : mealOptions
+    onChangeOptions({ [group]: pool.filter(o => o.id !== id) })
+    // Drop the id from any room that had opted in, so nothing dangles.
+    const idsKey = group === 'viewOptions' ? 'viewOptionIds' : 'mealOptionIds'
+    const affected = roomTypes.some(r => r[idsKey].includes(id))
+    if (affected) {
+      onChange(roomTypes.map(r => ({ ...r, [idsKey]: r[idsKey].filter(x => x !== id) })))
+    }
+  }
+
   const submitAdd = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !price || !inventory) return
@@ -38,8 +66,8 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
       basePrice: Number(price),
       totalInventory: Number(inventory),
       amenities: [],
-      viewOptions: [],
-      mealOptions: [],
+      viewOptionIds: [],
+      mealOptionIds: [],
       available: true,
     }
     onChange([...roomTypes, room])
@@ -62,6 +90,30 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
             + Add Room Type
           </button>
         )}
+      </div>
+
+      {/* Shared add-on pools: defined once, opted into per room below. */}
+      <div className="bg-gray-50 rounded-2xl p-5 mb-6 space-y-5">
+        <div>
+          <p className="text-sm font-semibold text-gray-700">Add-on options</p>
+          <p className="text-xs text-gray-400">
+            Define View and Meal-plan add-ons once here — each room type picks which ones it offers.
+          </p>
+        </div>
+        <SharedOptionEditor
+          title="View"
+          options={viewOptions}
+          onAdd={(label, delta) => addSharedOption('viewOptions', label, delta)}
+          onRemove={id => removeSharedOption('viewOptions', id)}
+          placeholder="Sea View"
+        />
+        <SharedOptionEditor
+          title="Meal Plan"
+          options={mealOptions}
+          onAdd={(label, delta) => addSharedOption('mealOptions', label, delta)}
+          onRemove={id => removeSharedOption('mealOptions', id)}
+          placeholder="Breakfast Included"
+        />
       </div>
 
       {showAddForm && (
@@ -126,6 +178,8 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
           <RoomTypeCard
             key={room.id}
             room={room}
+            viewOptions={viewOptions}
+            mealOptions={mealOptions}
             expanded={expandedId === room.id}
             onToggleExpand={() => setExpandedId(expandedId === room.id ? null : room.id)}
             onUpdate={patch => update(room.id, patch)}
@@ -139,22 +193,22 @@ export default function RoomTypesEditor({ roomTypes, onChange }: Props) {
 
 function RoomTypeCard({
   room,
+  viewOptions,
+  mealOptions,
   expanded,
   onToggleExpand,
   onUpdate,
   onRemove,
 }: {
   room: RoomType
+  viewOptions: PriceOption[]
+  mealOptions: PriceOption[]
   expanded: boolean
   onToggleExpand: () => void
   onUpdate: (patch: Partial<RoomType>) => void
   onRemove: () => void
 }) {
   const [customAmenity, setCustomAmenity] = useState('')
-  const [viewLabel, setViewLabel] = useState('')
-  const [viewDelta, setViewDelta] = useState('')
-  const [mealLabel, setMealLabel] = useState('')
-  const [mealDelta, setMealDelta] = useState('')
 
   const toggleAmenity = (tag: string) => {
     const has = room.amenities.includes(tag)
@@ -168,15 +222,13 @@ function RoomTypeCard({
     setCustomAmenity('')
   }
 
-  const addPriceOption = (group: 'viewOptions' | 'mealOptions', label: string, delta: string) => {
-    if (!label.trim() || delta === '') return
-    const option: PriceOption = { id: newId(), label: label.trim(), priceDelta: Number(delta) }
-    onUpdate({ [group]: [...room[group], option] } as Partial<RoomType>)
+  const toggleOption = (key: 'viewOptionIds' | 'mealOptionIds', id: string) => {
+    const has = room[key].includes(id)
+    onUpdate({ [key]: has ? room[key].filter(x => x !== id) : [...room[key], id] } as Partial<RoomType>)
   }
 
-  const removePriceOption = (group: 'viewOptions' | 'mealOptions', id: string) => {
-    onUpdate({ [group]: room[group].filter(o => o.id !== id) } as Partial<RoomType>)
-  }
+  const selectedViews = viewOptions.filter(o => room.viewOptionIds.includes(o.id))
+  const selectedMeals = mealOptions.filter(o => room.mealOptionIds.includes(o.id))
 
   return (
     <div className="border border-gray-100 rounded-2xl overflow-hidden">
@@ -233,12 +285,12 @@ function RoomTypeCard({
         </button>
       </div>
 
-      {!expanded && (room.amenities.length > 0 || room.viewOptions.length > 0 || room.mealOptions.length > 0) && (
+      {!expanded && (room.amenities.length > 0 || selectedViews.length > 0 || selectedMeals.length > 0) && (
         <div className="px-5 pb-4 flex flex-wrap gap-2">
           {room.amenities.map(a => (
             <span key={a} className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">{a}</span>
           ))}
-          {[...room.viewOptions, ...room.mealOptions].map(o => (
+          {[...selectedViews, ...selectedMeals].map(o => (
             <span key={o.id} className="text-xs bg-primary-pale text-primary px-2.5 py-1 rounded-full">
               {o.label} +₹{o.priceDelta}
             </span>
@@ -297,28 +349,18 @@ function RoomTypeCard({
             </div>
           </div>
 
-          {/* Price options */}
-          <PriceOptionGroup
-            title="View"
-            options={room.viewOptions}
-            label={viewLabel}
-            delta={viewDelta}
-            onLabelChange={setViewLabel}
-            onDeltaChange={setViewDelta}
-            onAdd={() => { addPriceOption('viewOptions', viewLabel, viewDelta); setViewLabel(''); setViewDelta('') }}
-            onRemove={id => removePriceOption('viewOptions', id)}
-            placeholder="Sea View"
+          {/* Opt-in to the hotel's shared add-on pools */}
+          <OptionSelector
+            title="View options"
+            pool={viewOptions}
+            selectedIds={room.viewOptionIds}
+            onToggle={id => toggleOption('viewOptionIds', id)}
           />
-          <PriceOptionGroup
-            title="Meal Plan"
-            options={room.mealOptions}
-            label={mealLabel}
-            delta={mealDelta}
-            onLabelChange={setMealLabel}
-            onDeltaChange={setMealDelta}
-            onAdd={() => { addPriceOption('mealOptions', mealLabel, mealDelta); setMealLabel(''); setMealDelta('') }}
-            onRemove={id => removePriceOption('mealOptions', id)}
-            placeholder="Breakfast Included"
+          <OptionSelector
+            title="Meal Plan options"
+            pool={mealOptions}
+            selectedIds={room.mealOptionIds}
+            onToggle={id => toggleOption('mealOptionIds', id)}
           />
         </div>
       )}
@@ -326,27 +368,74 @@ function RoomTypeCard({
   )
 }
 
-function PriceOptionGroup({
+// Per-room opt-in: toggle chips over the hotel's shared pool.
+function OptionSelector({
+  title,
+  pool,
+  selectedIds,
+  onToggle,
+}: {
+  title: string
+  pool: PriceOption[]
+  selectedIds: string[]
+  onToggle: (id: string) => void
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-gray-500 mb-2">{title}</p>
+      {pool.length === 0 ? (
+        <p className="text-xs text-gray-400 italic">
+          None defined yet — add {title.toLowerCase()} under “Add-on options” above.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {pool.map(o => {
+            const active = selectedIds.includes(o.id)
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => onToggle(o.id)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                  active
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-primary'
+                }`}
+              >
+                {o.label} +₹{o.priceDelta}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Hotel-level pool editor: add/remove shared options (label + single price).
+function SharedOptionEditor({
   title,
   options,
-  label,
-  delta,
-  onLabelChange,
-  onDeltaChange,
   onAdd,
   onRemove,
   placeholder,
 }: {
   title: string
   options: PriceOption[]
-  label: string
-  delta: string
-  onLabelChange: (v: string) => void
-  onDeltaChange: (v: string) => void
-  onAdd: () => void
+  onAdd: (label: string, delta: string) => void
   onRemove: (id: string) => void
   placeholder: string
 }) {
+  const [label, setLabel] = useState('')
+  const [delta, setDelta] = useState('')
+
+  const add = () => {
+    if (!label.trim() || delta === '') return
+    onAdd(label, delta)
+    setLabel('')
+    setDelta('')
+  }
+
   return (
     <div>
       <p className="text-xs font-medium text-gray-500 mb-2">{title} price options</p>
@@ -356,6 +445,7 @@ function PriceOptionGroup({
             <button
               key={o.id}
               onClick={() => onRemove(o.id)}
+              title="Remove this option"
               className="text-xs px-3 py-1.5 rounded-full bg-primary-pale text-primary border border-red-100"
             >
               {o.label} +₹{o.priceDelta} ×
@@ -366,19 +456,20 @@ function PriceOptionGroup({
       <div className="flex gap-2">
         <input
           value={label}
-          onChange={e => onLabelChange(e.target.value)}
+          onChange={e => setLabel(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
           placeholder={placeholder}
           className="flex-1 border-2 border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:border-primary focus:outline-none"
         />
         <input
           type="number"
           value={delta}
-          onChange={e => onDeltaChange(e.target.value)}
+          onChange={e => setDelta(e.target.value)}
           placeholder="+₹"
           className="w-20 border-2 border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:border-primary focus:outline-none"
         />
         <button
-          onClick={onAdd}
+          onClick={add}
           className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
         >
           Add
