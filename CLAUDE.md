@@ -161,6 +161,26 @@ cp .env.example .env.local
 npm run dev
 ```
 
+## Testing
+
+Vitest + React Testing Library (jsdom). Tests live in `__tests__/` folders next
+to the code they cover.
+
+```bash
+npm test          # run the suite once
+npm run test:watch # watch mode
+npm run typecheck  # tsc --noEmit
+npm run ci         # typecheck → test → next build (what CI runs)
+```
+
+`.github/workflows/ci.yml` runs `npm run ci` on every push and pull request, so a
+type error, failing test, or broken build blocks the change. Config is in
+`vitest.config.ts` (the `@/*` alias mirrors tsconfig); `vitest.setup.ts` wires up
+jest-dom and per-test cleanup. Current coverage: `can()`/`landingPath()`
+permissions, setup-wizard progress + persistence, the `RoomTypesEditor` amenity
+chips, the rupee price-level rendering, and the wizard Rooms step's
+buffer-then-save-once behavior (edits don't hit the API until "Confirm & continue").
+
 ## Roadmap
 
 - [ ] Real Google OAuth (NextAuth.js)
