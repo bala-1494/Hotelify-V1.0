@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
 import Navbar from '@/components/Navbar'
-import { Hotel, RoomType } from '@/lib/types'
+import { Hotel, RoomType, PriceOption } from '@/lib/types'
 import { apiFetch, apiJson } from '@/lib/apiClient'
 import RoomTypesEditor from '@/components/RoomTypesEditor'
 import PhotoManager from '@/components/PhotoManager'
@@ -25,9 +25,12 @@ import {
 
 // Owner setup wizard (S1.7). Replaces the old single-scroll console with a
 // 5-step guided flow: Basic info → Photos → Rooms → Theme → Preview & publish.
-// Every step still auto-saves through the same handlers; "Confirm & continue"
-// just advances and remembers the step. The dashboard checklist deep-links here
-// via ?step=n, and the draft card's Edit CTA resumes at the first open step.
+// Most steps auto-save through their handlers. The Rooms step is different: its
+// chips/toggles/prices edit a LOCAL draft and persist in a single request when
+// the owner leaves the step (Confirm & continue, Back, or a stepper jump), so a
+// half-typed room never round-trips and a failed save can't silently self-revert.
+// The dashboard checklist deep-links here via ?step=n, and the draft card's Edit
+// CTA resumes at the first open step.
 
 export default function HotelSetupWizardPage() {
   const { user, loading, hotelId, membershipLoading } = useAuth()
@@ -39,6 +42,14 @@ export default function HotelSetupWizardPage() {
   const [currentStep, setCurrentStep] = useState(0) // 0 = not yet initialized
   const [confirmed, setConfirmed] = useState<Partial<Record<SetupStepKey, boolean>>>({})
   const initedRef = useRef(false)
+
+  // Rooms-step working copy: edits accumulate here and only hit the API when the
+  // owner leaves the step. `null` means "not editing / nothing pending" and the
+  // editor renders straight off the server-backed hotel.
+  type RoomsDraft = { roomTypes: RoomType[]; viewOptions: PriceOption[]; mealOptions: PriceOption[] }
+  const [roomsDraft, setRoomsDraft] = useState<RoomsDraft | null>(null)
+  const [roomsSaving, setRoomsSaving] = useState(false)
+  const [roomsError, setRoomsError] = useState<string | null>(null)
 
   const refetch = useCallback(async () => {
     try {
@@ -135,8 +146,32 @@ export default function HotelSetupWizardPage() {
     await refetch()
   }
 
+  // Persist the Rooms draft in one shot. Returns false (and keeps the draft) if
+  // the save fails, so navigation can be blocked and the error shown. A no-op
+  // when the owner isn't on the Rooms step or hasn't touched anything.
+  const commitRoomsIfNeeded = async (): Promise<boolean> => {
+    if (stepByIndex(currentStep).key !== 'rooms' || !roomsDraft) return true
+    if (roomsSaving) return false
+    setRoomsSaving(true)
+    try {
+      // Shared view/meal pools live on the hotel row; room types have their own
+      // route. Both persist once here rather than on every chip click.
+      await patchHotel({ viewOptions: roomsDraft.viewOptions, mealOptions: roomsDraft.mealOptions })
+      await saveRoomTypes(roomsDraft.roomTypes)
+      setRoomsDraft(null)
+      setRoomsError(null)
+      return true
+    } catch (e: any) {
+      setRoomsError(e?.message || 'Could not save your room changes — please try again.')
+      return false
+    } finally {
+      setRoomsSaving(false)
+    }
+  }
+
   // ---- wizard navigation ---------------------------------------------------
-  const goToStep = (index: number) => {
+  const goToStep = async (index: number) => {
+    if (!(await commitRoomsIfNeeded())) return
     setCurrentStep(clampStep(index))
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -149,11 +184,13 @@ export default function HotelSetupWizardPage() {
     })
   }
 
-  const handlePrimary = () => {
+  const handlePrimary = async () => {
     const step = stepByIndex(currentStep)
+    if (!(await commitRoomsIfNeeded())) return
     markConfirmed(step.key)
     if (currentStep < TOTAL_STEPS) {
-      goToStep(currentStep + 1)
+      setCurrentStep(clampStep(currentStep + 1))
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
     } else {
       router.push('/dashboard')
     }
@@ -194,7 +231,9 @@ export default function HotelSetupWizardPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-wrap items-center justify-between gap-3">
           <span className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-amber-400" />
-            Setup — changes save automatically.
+            {active.key === 'rooms'
+              ? 'Setup — room changes save when you continue.'
+              : 'Setup — changes save automatically.'}
             <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${hotel.published ? 'bg-green-500/20 text-green-300' : 'bg-white/10 text-white/60'}`}>
               {hotel.published ? 'Published' : 'Draft'}
             </span>
@@ -275,15 +314,32 @@ export default function HotelSetupWizardPage() {
             />
           )}
 
-          {active.key === 'rooms' && (
-            <RoomTypesEditor
-              roomTypes={hotel.roomTypes}
-              onChange={saveRoomTypes}
-              viewOptions={hotel.viewOptions}
-              mealOptions={hotel.mealOptions}
-              onChangeOptions={patch => patchHotel(patch)}
-            />
-          )}
+          {active.key === 'rooms' && (() => {
+            // Edit the local draft (falling back to the server copy until the
+            // first edit). Nothing here calls the API — commitRoomsIfNeeded does,
+            // once, when the owner leaves the step.
+            const roomsData = roomsDraft ?? {
+              roomTypes: hotel.roomTypes,
+              viewOptions: hotel.viewOptions,
+              mealOptions: hotel.mealOptions,
+            }
+            return (
+              <>
+                {roomsError && (
+                  <div className="mb-4 p-3 bg-primary-pale border border-red-200 rounded-xl">
+                    <p className="text-sm text-primary">{roomsError}</p>
+                  </div>
+                )}
+                <RoomTypesEditor
+                  roomTypes={roomsData.roomTypes}
+                  onChange={rt => setRoomsDraft({ ...roomsData, roomTypes: rt })}
+                  viewOptions={roomsData.viewOptions}
+                  mealOptions={roomsData.mealOptions}
+                  onChangeOptions={patch => setRoomsDraft({ ...roomsData, ...patch })}
+                />
+              </>
+            )
+          })()}
 
           {active.key === 'theme' && (
             <ThemePicker hotel={hotel} onSelectTheme={themeId => patchHotel({ themeId })} hidePublish />
@@ -299,7 +355,8 @@ export default function HotelSetupWizardPage() {
           {currentStep > 1 ? (
             <button
               onClick={() => goToStep(currentStep - 1)}
-              className="px-5 py-3 border-2 border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-white transition-colors"
+              disabled={roomsSaving}
+              className="px-5 py-3 border-2 border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-white transition-colors disabled:opacity-50"
             >
               ← Back
             </button>
@@ -314,9 +371,14 @@ export default function HotelSetupWizardPage() {
 
           <button
             onClick={handlePrimary}
-            className="px-6 py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary-dark transition-colors"
+            disabled={roomsSaving}
+            className="px-6 py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary-dark transition-colors disabled:opacity-60"
           >
-            {currentStep < TOTAL_STEPS ? 'Confirm & continue →' : 'Finish → Dashboard'}
+            {roomsSaving
+              ? 'Saving…'
+              : currentStep < TOTAL_STEPS
+              ? 'Confirm & continue →'
+              : 'Finish → Dashboard'}
           </button>
         </div>
       </main>

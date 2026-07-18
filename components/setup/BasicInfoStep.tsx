@@ -7,7 +7,7 @@ import EditableField from '@/components/EditableField'
 // Everything auto-saves via patchHotel; "Confirm & continue" in the wizard
 // footer just advances.
 
-const PRICE = ['', '$', '$$', '$$$', '$$$$']
+const PRICE = ['', '₹', '₹₹', '₹₹₹', '₹₹₹₹']
 
 interface Props {
   hotel: Hotel
@@ -76,7 +76,7 @@ export default function BasicInfoStep({ hotel, patchHotel }: Props) {
                     : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
                 }`}
               >
-                $
+                ₹
               </button>
             ))}
             {hotel.priceLevel ? (
