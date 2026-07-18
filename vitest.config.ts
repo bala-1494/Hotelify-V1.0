@@ -7,7 +7,12 @@ import { resolve } from 'node:path'
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { '@': resolve(__dirname, '.') },
+    alias: {
+      '@': resolve(__dirname, '.'),
+      // `server-only` is a Next.js build guard with no runtime; stub it so
+      // server modules (e.g. lib/db.ts) can be unit-tested under Vitest.
+      'server-only': resolve(__dirname, 'test/stubs/server-only.ts'),
+    },
   },
   test: {
     environment: 'jsdom',

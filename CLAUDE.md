@@ -23,9 +23,13 @@ NextAuth session when ready. Permission checks go through `can()` in `lib/permis
 ### Data model (Supabase)
 Schema lives in `supabase/migrations/0001_foundation.sql`: `hotels`, `memberships`,
 `room_types`, `rooms`, `bookings`, `themes`, `photos`, plus `booking_status` /
-`member_role` enums. RLS is on with no public policies; the app reads/writes only
-through the service-role client (`lib/supabase/server.ts`). All DB helpers live in
-`lib/db.ts`. Custom photo uploads go to the `hotel-photos` Storage bucket.
+`member_role` enums. `0003_shared_price_options.sql` then moves the View/Meal add-on
+pools onto the `hotels` row (`view_options` / `meal_options`) and gives each room type
+opt-in id lists (`view_option_ids` / `meal_option_ids`) — the room editor writes to
+these, so this migration is REQUIRED for room-type saves to persist. RLS is on with no
+public policies; the app reads/writes only through the service-role client
+(`lib/supabase/server.ts`). All DB helpers live in `lib/db.ts`. Custom photo uploads go
+to the `hotel-photos` Storage bucket.
 
 **Write boundary (content half):** this codebase writes `hotels`, `room_types`,
 `themes`, `photos`, and NEW `bookings` rows with `status='pending'` only. It never
@@ -134,6 +138,7 @@ hooks/
 supabase/
   migrations/0001_foundation.sql  — storefront schema
   migrations/0002_operations.sql  — ops schema + inventory functions
+  migrations/0003_shared_price_options.sql — hotel-level view/meal pools + per-room opt-in ids
   seed_dev.sql            — dev-only mock staff + bookings
 ```
 
@@ -155,7 +160,8 @@ public key to Maps Embed API.
 npm install
 cp .env.example .env.local
 # Add API keys + Supabase URL/service-role key to .env.local
-# Run supabase/migrations/0001_foundation.sql then 0002_operations.sql in the SQL editor
+# Run supabase/migrations/0001_foundation.sql, then 0002_operations.sql, then 0003_shared_price_options.sql in the SQL editor
+# (0003 is REQUIRED — without it, room-type / add-on edits fail to persist)
 # Create a public Storage bucket named `hotel-photos`
 # (optional) Run supabase/seed_dev.sql after onboarding for mock staff + bookings
 npm run dev
