@@ -281,24 +281,40 @@ export async function updateHotel(id: string, patch: HotelPatch): Promise<Hotel>
 
 // Replace the full room-type set for a hotel (matches the editor's
 // onChange(roomTypes) contract). The editor mints valid UUIDs for new rows via
-// crypto.randomUUID(), so we treat the client-provided id as the stable key and
-// upsert on it — inserting new rows, updating existing ones, deleting the rest.
+// crypto.randomUUID(), so we treat the client-provided id as the stable key:
+// existing rows are UPDATEd in place, new rows INSERTed, and dropped rows deleted.
+//
+// NOTE: this deliberately does NOT use a single multi-row `.upsert()`. PostgREST's
+// bulk upsert was silently persisting only the first row's array/jsonb columns
+// (`amenities`, `view_option_ids`, `meal_option_ids`) and dropping them for every
+// subsequent row — so a second room type's amenities/add-ons never saved. Writing
+// each row on its own request (the same targeted `.update().eq('id', …)` pattern
+// updateHotel uses) sidesteps that and makes every row's columns persist.
 export async function replaceRoomTypes(hotelId: string, roomTypes: RoomType[]): Promise<Hotel> {
   const db = supabaseAdmin()
-  const keepIds = roomTypes.map(r => r.id).filter(isUuid)
 
-  // Delete removed room types (those no longer in the incoming set).
-  let del = db.from('room_types').delete().eq('hotel_id', hotelId)
-  if (keepIds.length > 0) del = del.not('id', 'in', `(${keepIds.join(',')})`)
-  const { error: dErr } = await del
-  if (dErr) throw dErr
+  // Which room types already exist for this hotel? A client-minted UUID isn't
+  // proof of existence (new rows carry UUIDs too), so ask the DB.
+  const { data: existingRows, error: exErr } = await db
+    .from('room_types')
+    .select('id')
+    .eq('hotel_id', hotelId)
+  if (exErr) throw exErr
+  const existingIds = new Set((existingRows ?? []).map(r => r.id as string))
 
-  if (roomTypes.length > 0) {
-    const rows = roomTypes.map((r, i) => ({
-      // Use the client uuid as the primary key; fall back to DB default if the
-      // id somehow isn't a uuid (older records).
-      ...(isUuid(r.id) ? { id: r.id } : {}),
-      hotel_id: hotelId,
+  // Delete removed room types (existing rows no longer in the incoming set).
+  const keep = new Set(roomTypes.map(r => r.id).filter(isUuid))
+  const toDelete = Array.from(existingIds).filter(id => !keep.has(id))
+  if (toDelete.length > 0) {
+    const { error } = await db.from('room_types').delete().eq('hotel_id', hotelId).in('id', toDelete)
+    if (error) throw error
+  }
+
+  // Update existing rows / insert new ones — one request each so a row's full
+  // column set (including the array/jsonb columns) is written deterministically.
+  for (let i = 0; i < roomTypes.length; i++) {
+    const r = roomTypes[i]
+    const fields = {
       name: r.name,
       base_price: r.basePrice,
       total_inventory: r.totalInventory,
@@ -307,9 +323,22 @@ export async function replaceRoomTypes(hotelId: string, roomTypes: RoomType[]): 
       meal_option_ids: r.mealOptionIds ?? [],
       available: r.available ?? true,
       sort_order: i,
-    }))
-    const { error } = await db.from('room_types').upsert(rows, { onConflict: 'id' })
-    if (error) throw error
+    }
+    if (isUuid(r.id) && existingIds.has(r.id)) {
+      const { error } = await db
+        .from('room_types')
+        .update(fields)
+        .eq('id', r.id)
+        .eq('hotel_id', hotelId)
+      if (error) throw error
+    } else {
+      const { error } = await db
+        .from('room_types')
+        // Keep the client UUID as the primary key when valid; fall back to the
+        // DB default otherwise (older/non-uuid ids).
+        .insert({ ...(isUuid(r.id) ? { id: r.id } : {}), hotel_id: hotelId, ...fields })
+      if (error) throw error
+    }
   }
 
   const hotel = await getHotelById(hotelId)
