@@ -38,7 +38,12 @@ vi.mock('@/components/AuthProvider', () => ({ useAuth: () => authValue }))
 vi.mock('@/components/Navbar', () => ({ default: () => null }))
 vi.mock('@/components/PhotoManager', () => ({ default: () => null }))
 vi.mock('@/components/ThemePicker', () => ({ default: () => null }))
-vi.mock('@/components/setup/PublishStep', () => ({ default: () => null }))
+// Functional stub so the publish action can be driven; only renders on step 5.
+vi.mock('@/components/setup/PublishStep', () => ({
+  default: ({ onTogglePublish }: { onTogglePublish: (p: boolean) => Promise<void> }) => (
+    <button onClick={() => onTogglePublish(true)}>__publish__</button>
+  ),
+}))
 vi.mock('@/components/setup/BasicInfoStep', () => ({ default: () => null }))
 
 const apiJson = vi.fn()
@@ -184,6 +189,19 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
 
     expect(screen.getByText('Royal Suite')).toBeInTheDocument()
     expect(roomTypePutCalls()).toHaveLength(0)
+  })
+
+  it('shows the "is live" celebration after publishing from the wizard', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState({}, '', '/hotel/h1?step=5') // land on the Publish step
+    render(<Page />)
+
+    await user.click(await screen.findByText('__publish__'))
+
+    // The console hands off to the same celebration the onboarding flow ends on.
+    await screen.findByText('Bloom Hub is live!')
+    expect(screen.getByText('hotelify.com/bloom-hub')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View booking page' })).toHaveAttribute('href', '/book/bloom-hub')
   })
 
   it('surfaces an error and stays on the Rooms step when the save fails', async () => {

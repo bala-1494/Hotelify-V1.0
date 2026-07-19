@@ -12,6 +12,7 @@ import ThemePicker from '@/components/ThemePicker'
 import BasicInfoStep from '@/components/setup/BasicInfoStep'
 import PublishStep from '@/components/setup/PublishStep'
 import { BrowserFrame, WizardPreview, previewRooms } from '@/components/BookingPagePreview'
+import PublishedCelebration from '@/components/PublishedCelebration'
 import { getTheme } from '@/lib/themes'
 import {
   SETUP_STEPS,
@@ -44,6 +45,9 @@ export default function HotelSetupWizardPage() {
   const [currentStep, setCurrentStep] = useState(0) // 0 = not yet initialized
   const [confirmed, setConfirmed] = useState<Partial<Record<SetupStepKey, boolean>>>({})
   const initedRef = useRef(false)
+  // Set the moment the owner publishes from the wizard, so we can show the
+  // same "your page is live" celebration the onboarding flow ends on.
+  const [justPublished, setJustPublished] = useState(false)
 
   // Rooms-step working copy: edits accumulate here and only hit the API when the
   // owner leaves the step. `null` means "not editing / nothing pending" and the
@@ -229,6 +233,21 @@ export default function HotelSetupWizardPage() {
     )
   }
 
+  // Fresh-publish celebration takes over the console, mirroring how onboarding
+  // ends. Reachable only right after the owner hits Publish in the wizard.
+  if (justPublished) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Navbar />
+        <PublishedCelebration
+          hotelName={hotel.name}
+          slug={hotel.subdomain}
+          onGoToDashboard={() => router.push('/dashboard')}
+        />
+      </div>
+    )
+  }
+
   const isMock = hotel.id.startsWith('mock-')
   const active = stepByIndex(currentStep)
 
@@ -390,7 +409,14 @@ export default function HotelSetupWizardPage() {
           )}
 
           {active.key === 'publish' && (
-            <PublishStep hotel={hotel} onTogglePublish={published => patchHotel({ published })} />
+            <PublishStep
+              hotel={hotel}
+              onTogglePublish={async published => {
+                await patchHotel({ published })
+                // Celebrate a fresh publish; unpublishing just updates state.
+                if (published) setJustPublished(true)
+              }}
+            />
           )}
         </div>
 
