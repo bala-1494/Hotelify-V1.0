@@ -315,9 +315,18 @@ export async function replaceRoomTypes(hotelId: string, roomTypes: RoomType[]): 
 
   // Update existing rows / insert new ones — one request each so a row's full
   // column set (including the array/jsonb columns) is written deterministically.
+  //
+  // Columns added by later migrations (0003/0004) can be absent from PostgREST's
+  // schema cache — either the migration hasn't been run, or the cache is stale
+  // right after it was. Rather than hard-fail the whole save with "Could not find
+  // the 'bed_note' column … in the schema cache", we strip the missing column and
+  // retry (see writeRoomTypeRow), so everything else still persists. A `dropped`
+  // set is shared across rows so a column proven missing on row 0 is skipped for
+  // the rest instead of failing N times.
+  const dropped = new Set<string>()
   for (let i = 0; i < roomTypes.length; i++) {
     const r = roomTypes[i]
-    const fields = {
+    const fields: Record<string, any> = {
       name: r.name,
       base_price: r.basePrice,
       total_inventory: r.totalInventory,
@@ -330,19 +339,16 @@ export async function replaceRoomTypes(hotelId: string, roomTypes: RoomType[]): 
       sort_order: i,
     }
     if (isUuid(r.id) && existingIds.has(r.id)) {
-      const { error } = await db
-        .from('room_types')
-        .update(fields)
-        .eq('id', r.id)
-        .eq('hotel_id', hotelId)
-      if (error) throw error
+      await writeRoomTypeRow(
+        f => db.from('room_types').update(f).eq('id', r.id).eq('hotel_id', hotelId),
+        fields,
+        dropped,
+      )
     } else {
-      const { error } = await db
-        .from('room_types')
-        // Keep the client UUID as the primary key when valid; fall back to the
-        // DB default otherwise (older/non-uuid ids).
-        .insert({ ...(isUuid(r.id) ? { id: r.id } : {}), hotel_id: hotelId, ...fields })
-      if (error) throw error
+      // Keep the client UUID as the primary key when valid; fall back to the
+      // DB default otherwise (older/non-uuid ids).
+      const base = { ...(isUuid(r.id) ? { id: r.id } : {}), hotel_id: hotelId }
+      await writeRoomTypeRow(f => db.from('room_types').insert({ ...base, ...f }), fields, dropped)
     }
   }
 
@@ -492,4 +498,57 @@ export async function getAvailability(
 
 function isUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
+
+// room_types columns introduced by migrations after 0001. If PostgREST's schema
+// cache doesn't know about one (un-run migration, or a cache that hasn't picked
+// the migration up yet) a write fails with PGRST204. These are all additive with
+// safe defaults, so it's better to persist the row without them than to lose the
+// whole save — the owner just re-runs migrations to capture them next time.
+const OPTIONAL_ROOM_TYPE_COLUMNS = new Set([
+  'view_option_ids', // 0003
+  'meal_option_ids', // 0003
+  'max_occupancy', // 0004
+  'bed_note', // 0004
+])
+
+// If `error` is PostgREST's "column missing from the schema cache" error, return
+// the offending column name; otherwise null. PostgREST reports this as PGRST204
+// with a message like: Could not find the 'bed_note' column of 'room_types' in
+// the schema cache.
+function missingSchemaColumn(error: any): string | null {
+  if (!error) return null
+  const msg = String(error.message ?? '')
+  if (error.code === 'PGRST204' || /schema cache/i.test(msg)) {
+    const m = msg.match(/'([^']+)' column/)
+    if (m) return m[1]
+  }
+  return null
+}
+
+// Run a single room_types insert/update, retrying with progressively-stripped
+// optional columns whenever PostgREST reports one is missing from its schema
+// cache. `dropped` is shared across rows so a column proven missing once is
+// pre-stripped for the rest of the batch (no repeated failed round-trips). A
+// missing column that ISN'T optional — or any other error — is rethrown.
+async function writeRoomTypeRow(
+  run: (fields: Record<string, any>) => PromiseLike<{ error: any }>,
+  fields: Record<string, any>,
+  dropped: Set<string>,
+): Promise<void> {
+  const attempt: Record<string, any> = { ...fields }
+  dropped.forEach(col => delete attempt[col])
+
+  // At most one retry per optional column, plus the initial try.
+  for (let i = 0; i <= OPTIONAL_ROOM_TYPE_COLUMNS.size; i++) {
+    const { error } = await run(attempt)
+    if (!error) return
+    const missing = missingSchemaColumn(error)
+    if (missing && OPTIONAL_ROOM_TYPE_COLUMNS.has(missing) && missing in attempt) {
+      dropped.add(missing)
+      delete attempt[missing]
+      continue
+    }
+    throw error
+  }
 }

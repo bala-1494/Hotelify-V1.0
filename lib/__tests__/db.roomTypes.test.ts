@@ -22,13 +22,23 @@ function hotelRow() {
 // Minimal chainable + awaitable fake of the supabase-js query builder, backed by
 // a mutable in-memory store. Any use of `.upsert()` throws — so a regression back
 // to bulk upsert fails this test loudly.
-function makeFakeDb(store: { roomTypes: any[]; hotel: any }) {
+function makeFakeDb(store: { roomTypes: any[]; hotel: any; missingColumns?: string[] }) {
   function from(table: string) {
     const state: any = { table, op: null, cols: null, filters: [] as [string, any][], inFilter: null, payload: null, single: false }
     const matches = (row: any) => {
       for (const [c, v] of state.filters) if (row[c] !== v) return false
       if (state.inFilter) { const [c, vals] = state.inFilter; if (!vals.includes(row[c])) return false }
       return true
+    }
+    // Emulate PostgREST rejecting a write that references a column missing from
+    // the schema cache (PGRST204) — the exact failure a stale/un-migrated DB gives.
+    const schemaCacheError = (payload: any) => {
+      for (const col of store.missingColumns ?? []) {
+        if (payload && col in payload) {
+          return { code: 'PGRST204', message: `Could not find the '${col}' column of 'room_types' in the schema cache`, details: null, hint: null }
+        }
+      }
+      return null
     }
     async function run(): Promise<any> {
       if (state.table === 'hotels') {
@@ -41,8 +51,16 @@ function makeFakeDb(store: { roomTypes: any[]; hotel: any }) {
           return { data: state.cols === 'id' ? rows.map(r => ({ id: r.id })) : rows.map(r => ({ ...r })), error: null }
         }
         if (state.op === 'delete') { store.roomTypes = store.roomTypes.filter(r => !matches(r)); return { error: null } }
-        if (state.op === 'update') { store.roomTypes.forEach(r => { if (matches(r)) Object.assign(r, state.payload) }); return { error: null } }
-        if (state.op === 'insert') { store.roomTypes.push({ ...state.payload }); return { error: null } }
+        if (state.op === 'update') {
+          const err = schemaCacheError(state.payload)
+          if (err) return { error: err }
+          store.roomTypes.forEach(r => { if (matches(r)) Object.assign(r, state.payload) }); return { error: null }
+        }
+        if (state.op === 'insert') {
+          const err = schemaCacheError(state.payload)
+          if (err) return { error: err }
+          store.roomTypes.push({ ...state.payload }); return { error: null }
+        }
       }
       return { data: null, error: null }
     }
@@ -64,7 +82,7 @@ function makeFakeDb(store: { roomTypes: any[]; hotel: any }) {
   return { from } as any
 }
 
-let store: { roomTypes: any[]; hotel: any }
+let store: { roomTypes: any[]; hotel: any; missingColumns?: string[] }
 vi.mock('@/lib/supabase/server', () => ({
   supabaseAdmin: () => makeFakeDb(store),
   PHOTO_BUCKET: 'hotel-photos',
@@ -117,5 +135,45 @@ describe('replaceRoomTypes persistence', () => {
     const suite = hotel.roomTypes.find(r => r.name === 'Suite')!
     expect(suite.amenities).toEqual(['AC', 'Mini Fridge'])
     expect(suite.viewOptionIds).toEqual(['v9'])
+  })
+
+  // Regression guard for the "Could not find the 'bed_note' column … in the
+  // schema cache" hard failure: when migration 0004's columns are missing from
+  // PostgREST's cache, the save must still persist everything else instead of
+  // throwing and losing the edit.
+  it('still saves when migration-0004 columns are missing from the schema cache', async () => {
+    store.missingColumns = ['max_occupancy', 'bed_note']
+
+    const incoming: RoomType[] = [
+      { id: 'a08ece20-f2c5-475b-979b-e8b89baf7c02', name: 'Deluxe King room', basePrice: 4800, totalInventory: 4, amenities: ['Geyser', 'WiFi', 'Balcony'], viewOptionIds: ['v1'], mealOptionIds: ['m1'], available: false, maxOccupancy: 3, bedNote: '1 king bed · 300 sq ft' },
+      { id: 'c1d2e3f4-a5b6-47c8-99d0-e1f2a3b4c5d6', name: 'Suite', basePrice: 9000, totalInventory: 2, amenities: ['AC'], viewOptionIds: [], mealOptionIds: [], available: true, maxOccupancy: 4, bedNote: '2 queen beds' },
+    ]
+
+    // Must resolve (no throw) even though the DB rejects the new columns.
+    const hotel = await replaceRoomTypes(HOTEL_ID, incoming)
+
+    // Every column the schema DOES know about must persist for both rows.
+    const king = hotel.roomTypes.find(r => r.name === 'Deluxe King room')!
+    expect(king.basePrice).toBe(4800)
+    expect(king.amenities).toEqual(['Geyser', 'WiFi', 'Balcony'])
+    expect(king.viewOptionIds).toEqual(['v1'])
+    expect(king.available).toBe(false)
+    const suite = hotel.roomTypes.find(r => r.name === 'Suite')!
+    expect(suite.amenities).toEqual(['AC'])
+
+    // The missing columns weren't written (they fall back to mapRoomType defaults).
+    const kingRow = store.roomTypes.find(r => r.id === 'a08ece20-f2c5-475b-979b-e8b89baf7c02')!
+    expect('bed_note' in kingRow).toBe(false)
+    expect('max_occupancy' in kingRow).toBe(false)
+  })
+
+  it('re-throws errors that are not recoverable missing-column errors', async () => {
+    // A missing column that isn't one of the optional migration columns must NOT
+    // be swallowed — it's a real bug, not a stale cache.
+    store.missingColumns = ['base_price']
+    const incoming: RoomType[] = [
+      { id: 'a08ece20-f2c5-475b-979b-e8b89baf7c02', name: 'Deluxe King room', basePrice: 4500, totalInventory: 3, amenities: [], viewOptionIds: [], mealOptionIds: [], available: true },
+    ]
+    await expect(replaceRoomTypes(HOTEL_ID, incoming)).rejects.toThrow(/schema cache/)
   })
 })
