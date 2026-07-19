@@ -45,6 +45,10 @@ export interface RoomType {
   // S1.6 owner availability toggle — when false the room is hidden from guests
   // regardless of confirmed-booking inventory math.
   available: boolean
+  // Onboarding-wizard presentation fields (migration 0004). Optional so older
+  // room-type literals keep type-checking; the DB backfills safe defaults.
+  maxOccupancy?: number
+  bedNote?: string
 }
 
 export interface Photo {

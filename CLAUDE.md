@@ -26,7 +26,10 @@ Schema lives in `supabase/migrations/0001_foundation.sql`: `hotels`, `membership
 `member_role` enums. `0003_shared_price_options.sql` then moves the View/Meal add-on
 pools onto the `hotels` row (`view_options` / `meal_options`) and gives each room type
 opt-in id lists (`view_option_ids` / `meal_option_ids`) — the room editor writes to
-these, so this migration is REQUIRED for room-type saves to persist. RLS is on with no
+these, so this migration is REQUIRED for room-type saves to persist.
+`0004_room_occupancy_bed.sql` adds `max_occupancy` + `bed_note` to `room_types` (additive,
+safe defaults) so the onboarding wizard's per-room "Max guests" and "Bed & size" fields
+persist. RLS is on with no
 public policies; the app reads/writes only through the service-role client
 (`lib/supabase/server.ts`). All DB helpers live in `lib/db.ts`. Custom photo uploads go
 to the `hotel-photos` Storage bucket.
@@ -39,9 +42,17 @@ operations half. Availability is computed by *reading* confirmed bookings.
 ### Owner onboarding flow (S1.1)
 1. Root router (`app/page.tsx`) sends owners with no hotel to `/onboarding`, others to
    `/dashboard` (one hotel per owner, enforced by a partial unique index + `createHotelForOwner`).
-2. `/onboarding` imports via `AddHotelModal` → confirm step → `POST /api/hotels` creates
-   the hotel, owner membership, seeds photos + default theme, generates the page.
-3. `/dashboard` shows the hotel + a first-run checklist (`OnboardingChecklist`).
+2. `/onboarding` (`app/onboarding/page.tsx`) is a self-contained multi-step flow matching the
+   "Hotelify Onboarding" design: **Import** (search `/api/autocomplete` + `/api/places`, mock
+   fallback) → **Preview** (live `WizardPreview` of the draft page) → **Customize** wizard
+   (Theme / Photos / Story / Room types / Publish, with a sticky live preview) → **Published**.
+   Everything is edited in local state and persisted once at Publish: `POST /api/hotels`
+   (create — honors chosen `themeId`, room types incl. occupancy/bed, add-on pools, summary→
+   `description`, and cover-first visible photos) then `PATCH /api/hotels/[id] { published: true }`.
+   The wizard's ✦ story helpers and no-OTP sign-in are front-end only (AI descriptions / real
+   auth remain roadmap items).
+3. `/dashboard` shows the hotel + a first-run checklist (`OnboardingChecklist`). Post-onboarding
+   edits (incl. custom photo upload, which needs the hotel to exist) live in `/hotel/[id]`.
 
 ### Guest booking flow (S1.5 / S1.6)
 `app/book/[subdomain]` reads `GET /api/book/[subdomain]?checkIn=&checkOut=` (hotel +
@@ -160,8 +171,9 @@ public key to Maps Embed API.
 npm install
 cp .env.example .env.local
 # Add API keys + Supabase URL/service-role key to .env.local
-# Run supabase/migrations/0001_foundation.sql, then 0002_operations.sql, then 0003_shared_price_options.sql in the SQL editor
+# Run supabase/migrations 0001_foundation.sql → 0002_operations.sql → 0003_shared_price_options.sql → 0004_room_occupancy_bed.sql in the SQL editor
 # (0003 is REQUIRED — without it, room-type / add-on edits fail to persist)
+# (0004 is REQUIRED for the onboarding wizard's per-room Max guests + Bed & size fields to persist)
 # Create a public Storage bucket named `hotel-photos`
 # (optional) Run supabase/seed_dev.sql after onboarding for mock staff + bookings
 npm run dev
