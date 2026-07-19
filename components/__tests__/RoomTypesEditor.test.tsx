@@ -103,10 +103,53 @@ describe('RoomTypesEditor — shared add-on opt-in', () => {
     render(<Harness initial={[room()]} onChange={onChange} viewOptions={viewOptions} />)
 
     await user.click(screen.getByRole('button', { name: 'Edit details' }))
-    // Per-room opt-in button reads exactly "Sea View +₹800"; the pool editor's
-    // removable chip reads "Sea View +₹800 ×", so the exact name disambiguates.
+    // The per-room opt-in is a button named exactly "Sea View +₹800"; the pool
+    // editor's remove control is aria-labelled "Remove Sea View", so this name
+    // resolves unambiguously to the opt-in.
     await user.click(screen.getByRole('button', { name: 'Sea View +₹800' }))
 
     expect(onChange.mock.calls.at(-1)![0][0].viewOptionIds).toEqual(['v1'])
+  })
+})
+
+describe('RoomTypesEditor — presets, blank add & occupancy', () => {
+  it('quick-adds a preset room with its price, occupancy and bed note', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(<Harness initial={[]} onChange={onChange} />)
+
+    await user.click(screen.getByRole('button', { name: /Standard Room/ }))
+
+    const added = onChange.mock.calls.at(-1)![0][0]
+    expect(added).toMatchObject({
+      name: 'Standard Room',
+      basePrice: 3499,
+      maxOccupancy: 2,
+      bedNote: '1 queen bed · 220 sq ft',
+      available: true,
+    })
+  })
+
+  it('adds a blank room type, expanded and ready to edit', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(<Harness initial={[]} onChange={onChange} />)
+
+    await user.click(screen.getByRole('button', { name: '+ Add Room Type' }))
+
+    expect(onChange.mock.calls.at(-1)![0][0].name).toBe('New room type')
+    // It opens expanded, so the details fields are visible without a click.
+    expect(screen.getByPlaceholderText('1 king bed · 300 sq ft')).toBeInTheDocument()
+  })
+
+  it('edits the per-room bed note (migration 0004 field)', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(<Harness initial={[room()]} onChange={onChange} />)
+
+    await user.click(screen.getByRole('button', { name: 'Edit details' }))
+    await user.type(screen.getByPlaceholderText('1 king bed · 300 sq ft'), '2 queen beds')
+
+    expect(onChange.mock.calls.at(-1)![0][0].bedNote).toBe('2 queen beds')
   })
 })

@@ -38,7 +38,12 @@ vi.mock('@/components/AuthProvider', () => ({ useAuth: () => authValue }))
 vi.mock('@/components/Navbar', () => ({ default: () => null }))
 vi.mock('@/components/PhotoManager', () => ({ default: () => null }))
 vi.mock('@/components/ThemePicker', () => ({ default: () => null }))
-vi.mock('@/components/setup/PublishStep', () => ({ default: () => null }))
+// Functional stub so the publish action can be driven; only renders on step 5.
+vi.mock('@/components/setup/PublishStep', () => ({
+  default: ({ onTogglePublish }: { onTogglePublish: (p: boolean) => Promise<void> }) => (
+    <button onClick={() => onTogglePublish(true)}>__publish__</button>
+  ),
+}))
 vi.mock('@/components/setup/BasicInfoStep', () => ({ default: () => null }))
 
 const apiJson = vi.fn()
@@ -119,13 +124,13 @@ beforeEach(() => {
   })
 })
 
-describe('HotelSetupWizardPage — Rooms step is buffered', () => {
+describe('HotelSetupWizardPage — Rooms step', () => {
   it('does not persist while editing chips, then saves once on Confirm & continue', async () => {
     const user = userEvent.setup()
     render(<Page />)
 
     // Wait for the Rooms step to render off the fetched hotel.
-    await screen.findByText('Room Types')
+    await screen.findByText('Room types')
 
     // Only the initial GET has happened — no room-type writes yet.
     expect(roomTypePutCalls()).toHaveLength(0)
@@ -148,7 +153,7 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
   it('advances to the next step after a successful save', async () => {
     const user = userEvent.setup()
     render(<Page />)
-    await screen.findByText('Room Types')
+    await screen.findByText('Room types')
 
     await user.click(screen.getByRole('button', { name: 'Edit details' }))
     await user.click(screen.getByRole('button', { name: 'AC' }))
@@ -156,9 +161,34 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
 
     // Rooms editor is gone once we move on to the Theme step.
     await vi.waitFor(() => {
-      expect(screen.queryByText('Room Types')).not.toBeInTheDocument()
+      expect(screen.queryByText('Room types')).not.toBeInTheDocument()
     })
     expect(roomTypePutCalls()).toHaveLength(1)
+  })
+
+  it('shows a live booking-page preview alongside the editor', async () => {
+    render(<Page />)
+    await screen.findByText('Room types')
+
+    // The preview mirrors the guest booking page — hotel name + a book CTA that
+    // only the preview renders (the editor never shows either).
+    expect(screen.getByText('LIVE PREVIEW')).toBeInTheDocument()
+    expect(screen.getByText('Bloom Hub')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Request to book' })).toBeInTheDocument()
+  })
+
+  it('reflects unsaved room edits in the live preview immediately', async () => {
+    const user = userEvent.setup()
+    render(<Page />)
+    await screen.findByText('Room types')
+
+    // Renaming the room updates the preview live — before any save round-trips.
+    const nameInput = screen.getByDisplayValue('Deluxe King room')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Royal Suite')
+
+    expect(screen.getByText('Royal Suite')).toBeInTheDocument()
+    expect(roomTypePutCalls()).toHaveLength(0)
   })
 
   it('surfaces an error and stays on the Rooms step when the save fails', async () => {
@@ -173,7 +203,7 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
     })
 
     render(<Page />)
-    await screen.findByText('Room Types')
+    await screen.findByText('Room types')
 
     await user.click(screen.getByRole('button', { name: 'Edit details' }))
     await user.click(screen.getByRole('button', { name: 'AC' }))
@@ -181,6 +211,21 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
 
     // Error is shown, and we're still on the Rooms step (not silently reverted).
     await screen.findByText(/column "view_option_ids" does not exist/)
-    expect(screen.getByText('Room Types')).toBeInTheDocument()
+    expect(screen.getByText('Room types')).toBeInTheDocument()
+  })
+})
+
+describe('HotelSetupWizardPage — Publish', () => {
+  it('hands off to the "is live" celebration after publishing', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState({}, '', '/hotel/h1?step=5') // land on the Publish step
+    render(<Page />)
+
+    await user.click(await screen.findByText('__publish__'))
+
+    // The console ends on the same celebration the onboarding flow does.
+    await screen.findByText('Bloom Hub is live!')
+    expect(screen.getByText('hotelify.com/bloom-hub')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View booking page' })).toHaveAttribute('href', '/book/bloom-hub')
   })
 })

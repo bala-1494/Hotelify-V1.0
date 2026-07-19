@@ -195,9 +195,12 @@ npm run ci         # typecheck → test → next build (what CI runs)
 type error, failing test, or broken build blocks the change. Config is in
 `vitest.config.ts` (the `@/*` alias mirrors tsconfig); `vitest.setup.ts` wires up
 jest-dom and per-test cleanup. Current coverage: `can()`/`landingPath()`
-permissions, setup-wizard progress + persistence, the `RoomTypesEditor` amenity
-chips, the rupee price-level rendering, and the wizard Rooms step's
-buffer-then-save-once behavior (edits don't hit the API until "Confirm & continue").
+permissions, setup-wizard progress + persistence, `replaceRoomTypes` persistence,
+the `RoomTypesEditor` (amenity chips, presets, blank-add, per-room bed note),
+the rupee price-level rendering, the wizard Rooms step (buffer-then-save-once —
+edits don't hit the API until "Confirm & continue" — the sticky live preview, and
+the save-error surface), and the publish celebration (`PublishedCelebration` plus
+the console's publish→celebration handoff).
 
 ## Roadmap
 

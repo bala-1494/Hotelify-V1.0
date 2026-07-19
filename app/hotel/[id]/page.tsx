@@ -11,6 +11,9 @@ import PhotoManager from '@/components/PhotoManager'
 import ThemePicker from '@/components/ThemePicker'
 import BasicInfoStep from '@/components/setup/BasicInfoStep'
 import PublishStep from '@/components/setup/PublishStep'
+import { BrowserFrame, WizardPreview, previewRooms } from '@/components/BookingPagePreview'
+import PublishedCelebration from '@/components/PublishedCelebration'
+import { getTheme } from '@/lib/themes'
 import {
   SETUP_STEPS,
   TOTAL_STEPS,
@@ -42,6 +45,9 @@ export default function HotelSetupWizardPage() {
   const [currentStep, setCurrentStep] = useState(0) // 0 = not yet initialized
   const [confirmed, setConfirmed] = useState<Partial<Record<SetupStepKey, boolean>>>({})
   const initedRef = useRef(false)
+  // Set the moment the owner publishes from the wizard, so we can show the
+  // same "your page is live" celebration the onboarding flow ends on.
+  const [justPublished, setJustPublished] = useState(false)
 
   // Rooms-step working copy: edits accumulate here and only hit the API when the
   // owner leaves the step. `null` means "not editing / nothing pending" and the
@@ -50,6 +56,14 @@ export default function HotelSetupWizardPage() {
   const [roomsDraft, setRoomsDraft] = useState<RoomsDraft | null>(null)
   const [roomsSaving, setRoomsSaving] = useState(false)
   const [roomsError, setRoomsError] = useState<string | null>(null)
+  const roomsErrorRef = useRef<HTMLDivElement>(null)
+
+  // A rooms save fails silently if the owner is scrolled down to the footer
+  // button: the error banner lives at the top of the step, out of view. Bring it
+  // on-screen whenever it appears so "Confirm & continue" never looks like a no-op.
+  useEffect(() => {
+    if (roomsError) roomsErrorRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+  }, [roomsError])
 
   const refetch = useCallback(async () => {
     try {
@@ -219,6 +233,21 @@ export default function HotelSetupWizardPage() {
     )
   }
 
+  // Fresh-publish celebration takes over the console, mirroring how onboarding
+  // ends. Reachable only right after the owner hits Publish in the wizard.
+  if (justPublished) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Navbar />
+        <PublishedCelebration
+          hotelName={hotel.name}
+          slug={hotel.subdomain}
+          onGoToDashboard={() => router.push('/dashboard')}
+        />
+      </div>
+    )
+  }
+
   const isMock = hotel.id.startsWith('mock-')
   const active = stepByIndex(currentStep)
 
@@ -255,7 +284,7 @@ export default function HotelSetupWizardPage() {
         </div>
       )}
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={`mx-auto px-4 sm:px-6 lg:px-8 py-8 ${active.key === 'rooms' ? 'max-w-6xl' : 'max-w-4xl'}`}>
         {/* Stepper */}
         <ol className="flex items-center gap-2 mb-8 overflow-x-auto pb-1">
           {SETUP_STEPS.map((s, i) => {
@@ -324,20 +353,54 @@ export default function HotelSetupWizardPage() {
               mealOptions: hotel.mealOptions,
             }
             return (
-              <>
-                {roomsError && (
-                  <div className="mb-4 p-3 bg-primary-pale border border-red-200 rounded-xl">
-                    <p className="text-sm text-primary">{roomsError}</p>
+              <div className="grid gap-7 items-start lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="min-w-0">
+                  {roomsError && (
+                    <div ref={roomsErrorRef} className="mb-4 p-3 bg-primary-pale border border-red-200 rounded-xl">
+                      <p className="text-sm font-medium text-primary">Couldn&apos;t save your room changes</p>
+                      <p className="text-sm text-primary/80 mt-0.5">{roomsError}</p>
+                      <p className="text-xs text-primary/70 mt-1.5">
+                        Your edits are still here — nothing was lost. Try again, or if this mentions a missing
+                        column, run the latest Supabase migrations (0003 &amp; 0004) and retry.
+                      </p>
+                    </div>
+                  )}
+                  <RoomTypesEditor
+                    roomTypes={roomsData.roomTypes}
+                    // Functional updates so a single interaction that emits BOTH
+                    // callbacks (e.g. removing a shared add-on also drops its id
+                    // from each room) composes instead of clobbering.
+                    onChange={rt => setRoomsDraft(d => ({ ...(d ?? roomsData), roomTypes: rt }))}
+                    viewOptions={roomsData.viewOptions}
+                    mealOptions={roomsData.mealOptions}
+                    onChangeOptions={patch => setRoomsDraft(d => ({ ...(d ?? roomsData), ...patch }))}
+                  />
+                </div>
+
+                {/* Live preview — mirrors the guest booking page as the owner edits. */}
+                <aside className="hidden lg:block lg:sticky lg:top-6">
+                  <div className="flex items-center justify-between mb-2.5 px-1">
+                    <span className="text-xs font-bold text-gray-400 tracking-wider">LIVE PREVIEW</span>
+                    <span className="text-[11px] bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full">Updates as you edit</span>
                   </div>
-                )}
-                <RoomTypesEditor
-                  roomTypes={roomsData.roomTypes}
-                  onChange={rt => setRoomsDraft({ ...roomsData, roomTypes: rt })}
-                  viewOptions={roomsData.viewOptions}
-                  mealOptions={roomsData.mealOptions}
-                  onChangeOptions={patch => setRoomsDraft({ ...roomsData, ...patch })}
-                />
-              </>
+                  <BrowserFrame slug={hotel.subdomain} compact>
+                    <div className="max-h-[640px] overflow-auto">
+                      <WizardPreview
+                        theme={getTheme(hotel.themeId)}
+                        hotel={hotel}
+                        summary={hotel.description ?? ''}
+                        coverRef={hotel.photoReferences?.[0]}
+                        rooms={previewRooms(
+                          roomsData.roomTypes.filter(r => r.available),
+                          roomsData.viewOptions,
+                          roomsData.mealOptions,
+                        )}
+                        compact
+                      />
+                    </div>
+                  </BrowserFrame>
+                </aside>
+              </div>
             )
           })()}
 
@@ -346,7 +409,14 @@ export default function HotelSetupWizardPage() {
           )}
 
           {active.key === 'publish' && (
-            <PublishStep hotel={hotel} onTogglePublish={published => patchHotel({ published })} />
+            <PublishStep
+              hotel={hotel}
+              onTogglePublish={async published => {
+                await patchHotel({ published })
+                // Celebrate a fresh publish; unpublishing just updates state.
+                if (published) setJustPublished(true)
+              }}
+            />
           )}
         </div>
 
