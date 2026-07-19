@@ -11,6 +11,8 @@ import PhotoManager from '@/components/PhotoManager'
 import ThemePicker from '@/components/ThemePicker'
 import BasicInfoStep from '@/components/setup/BasicInfoStep'
 import PublishStep from '@/components/setup/PublishStep'
+import { BrowserFrame, WizardPreview, previewRooms } from '@/components/BookingPagePreview'
+import { getTheme } from '@/lib/themes'
 import {
   SETUP_STEPS,
   TOTAL_STEPS,
@@ -263,7 +265,7 @@ export default function HotelSetupWizardPage() {
         </div>
       )}
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={`mx-auto px-4 sm:px-6 lg:px-8 py-8 ${active.key === 'rooms' ? 'max-w-6xl' : 'max-w-4xl'}`}>
         {/* Stepper */}
         <ol className="flex items-center gap-2 mb-8 overflow-x-auto pb-1">
           {SETUP_STEPS.map((s, i) => {
@@ -332,28 +334,54 @@ export default function HotelSetupWizardPage() {
               mealOptions: hotel.mealOptions,
             }
             return (
-              <>
-                {roomsError && (
-                  <div ref={roomsErrorRef} className="mb-4 p-3 bg-primary-pale border border-red-200 rounded-xl">
-                    <p className="text-sm font-medium text-primary">Couldn&apos;t save your room changes</p>
-                    <p className="text-sm text-primary/80 mt-0.5">{roomsError}</p>
-                    <p className="text-xs text-primary/70 mt-1.5">
-                      Your edits are still here — nothing was lost. Try again, or if this mentions a missing
-                      column, run the latest Supabase migrations (0003 &amp; 0004) and retry.
-                    </p>
+              <div className="grid gap-7 items-start lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="min-w-0">
+                  {roomsError && (
+                    <div ref={roomsErrorRef} className="mb-4 p-3 bg-primary-pale border border-red-200 rounded-xl">
+                      <p className="text-sm font-medium text-primary">Couldn&apos;t save your room changes</p>
+                      <p className="text-sm text-primary/80 mt-0.5">{roomsError}</p>
+                      <p className="text-xs text-primary/70 mt-1.5">
+                        Your edits are still here — nothing was lost. Try again, or if this mentions a missing
+                        column, run the latest Supabase migrations (0003 &amp; 0004) and retry.
+                      </p>
+                    </div>
+                  )}
+                  <RoomTypesEditor
+                    roomTypes={roomsData.roomTypes}
+                    // Functional updates so a single interaction that emits BOTH
+                    // callbacks (e.g. removing a shared add-on also drops its id
+                    // from each room) composes instead of clobbering.
+                    onChange={rt => setRoomsDraft(d => ({ ...(d ?? roomsData), roomTypes: rt }))}
+                    viewOptions={roomsData.viewOptions}
+                    mealOptions={roomsData.mealOptions}
+                    onChangeOptions={patch => setRoomsDraft(d => ({ ...(d ?? roomsData), ...patch }))}
+                  />
+                </div>
+
+                {/* Live preview — mirrors the guest booking page as the owner edits. */}
+                <aside className="hidden lg:block lg:sticky lg:top-6">
+                  <div className="flex items-center justify-between mb-2.5 px-1">
+                    <span className="text-xs font-bold text-gray-400 tracking-wider">LIVE PREVIEW</span>
+                    <span className="text-[11px] bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full">Updates as you edit</span>
                   </div>
-                )}
-                <RoomTypesEditor
-                  roomTypes={roomsData.roomTypes}
-                  // Functional updates so a single interaction that emits BOTH
-                  // callbacks (e.g. removing a shared add-on also drops its id
-                  // from each room) composes instead of clobbering.
-                  onChange={rt => setRoomsDraft(d => ({ ...(d ?? roomsData), roomTypes: rt }))}
-                  viewOptions={roomsData.viewOptions}
-                  mealOptions={roomsData.mealOptions}
-                  onChangeOptions={patch => setRoomsDraft(d => ({ ...(d ?? roomsData), ...patch }))}
-                />
-              </>
+                  <BrowserFrame slug={hotel.subdomain} compact>
+                    <div className="max-h-[640px] overflow-auto">
+                      <WizardPreview
+                        theme={getTheme(hotel.themeId)}
+                        hotel={hotel}
+                        summary={hotel.description ?? ''}
+                        coverRef={hotel.photoReferences?.[0]}
+                        rooms={previewRooms(
+                          roomsData.roomTypes.filter(r => r.available),
+                          roomsData.viewOptions,
+                          roomsData.mealOptions,
+                        )}
+                        compact
+                      />
+                    </div>
+                  </BrowserFrame>
+                </aside>
+              </div>
             )
           })()}
 

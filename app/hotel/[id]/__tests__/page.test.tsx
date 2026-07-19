@@ -161,6 +161,31 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
     expect(roomTypePutCalls()).toHaveLength(1)
   })
 
+  it('shows a live booking-page preview alongside the editor', async () => {
+    render(<Page />)
+    await screen.findByText('Room types')
+
+    // The preview mirrors the guest booking page — hotel name + a book CTA that
+    // only the preview renders (the editor never shows either).
+    expect(screen.getByText('LIVE PREVIEW')).toBeInTheDocument()
+    expect(screen.getByText('Bloom Hub')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Request to book' })).toBeInTheDocument()
+  })
+
+  it('reflects unsaved room edits in the live preview immediately', async () => {
+    const user = userEvent.setup()
+    render(<Page />)
+    await screen.findByText('Room types')
+
+    // Renaming the room updates the preview live — before any save round-trips.
+    const nameInput = screen.getByDisplayValue('Deluxe King room')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Royal Suite')
+
+    expect(screen.getByText('Royal Suite')).toBeInTheDocument()
+    expect(roomTypePutCalls()).toHaveLength(0)
+  })
+
   it('surfaces an error and stays on the Rooms step when the save fails', async () => {
     const user = userEvent.setup()
     apiJson.mockImplementation(async (url: string, init?: RequestInit) => {
