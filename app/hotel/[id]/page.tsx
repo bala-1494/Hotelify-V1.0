@@ -50,6 +50,14 @@ export default function HotelSetupWizardPage() {
   const [roomsDraft, setRoomsDraft] = useState<RoomsDraft | null>(null)
   const [roomsSaving, setRoomsSaving] = useState(false)
   const [roomsError, setRoomsError] = useState<string | null>(null)
+  const roomsErrorRef = useRef<HTMLDivElement>(null)
+
+  // A rooms save fails silently if the owner is scrolled down to the footer
+  // button: the error banner lives at the top of the step, out of view. Bring it
+  // on-screen whenever it appears so "Confirm & continue" never looks like a no-op.
+  useEffect(() => {
+    if (roomsError) roomsErrorRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+  }, [roomsError])
 
   const refetch = useCallback(async () => {
     try {
@@ -326,8 +334,13 @@ export default function HotelSetupWizardPage() {
             return (
               <>
                 {roomsError && (
-                  <div className="mb-4 p-3 bg-primary-pale border border-red-200 rounded-xl">
-                    <p className="text-sm text-primary">{roomsError}</p>
+                  <div ref={roomsErrorRef} className="mb-4 p-3 bg-primary-pale border border-red-200 rounded-xl">
+                    <p className="text-sm font-medium text-primary">Couldn&apos;t save your room changes</p>
+                    <p className="text-sm text-primary/80 mt-0.5">{roomsError}</p>
+                    <p className="text-xs text-primary/70 mt-1.5">
+                      Your edits are still here — nothing was lost. Try again, or if this mentions a missing
+                      column, run the latest Supabase migrations (0003 &amp; 0004) and retry.
+                    </p>
                   </div>
                 )}
                 <RoomTypesEditor
