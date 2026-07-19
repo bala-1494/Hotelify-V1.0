@@ -11,13 +11,23 @@ import { photoUrl } from '@/lib/photo'
 
 const rupee = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN')
 
+// A guest-selectable add-on shown in the preview (View or Meal-plan option).
+export interface PreviewAddon {
+  label: string
+  priceDelta: number
+}
+
 export interface PreviewRoom {
   name: string
   price: number
   maxOccupancy: number
   bedNote: string
   amenities: string[]
-  addons: string[]
+  // Kept separate (not a flat list) so the preview can mirror the real booking
+  // page: View + Meal plan are OPTIONAL groups the guest picks from, each choice
+  // adding its priceDelta to the per-night rate.
+  viewOptions: PreviewAddon[]
+  mealOptions: PreviewAddon[]
 }
 
 // Structural input satisfied by both the wizard's WizRoom and the console's
@@ -37,15 +47,19 @@ export function previewRooms(
   viewOptions: PriceOption[],
   mealOptions: PriceOption[]
 ): PreviewRoom[] {
-  const label = (pool: PriceOption[], ids: string[]) =>
-    ids.map(id => pool.find(o => o.id === id)).filter(Boolean).map(o => `${o!.label} +₹${o!.priceDelta}`)
+  const resolve = (pool: PriceOption[], ids: string[]): PreviewAddon[] =>
+    ids
+      .map(id => pool.find(o => o.id === id))
+      .filter((o): o is PriceOption => !!o)
+      .map(o => ({ label: o.label, priceDelta: o.priceDelta }))
   return rooms.map(r => ({
     name: r.name,
     price: r.basePrice,
     maxOccupancy: r.maxOccupancy ?? 2,
     bedNote: r.bedNote ?? '',
     amenities: r.amenities,
-    addons: [...label(viewOptions, r.viewOptionIds), ...label(mealOptions, r.mealOptionIds)],
+    viewOptions: resolve(viewOptions, r.viewOptionIds),
+    mealOptions: resolve(mealOptions, r.mealOptionIds),
   }))
 }
 
@@ -120,19 +134,22 @@ export function WizardPreview({ theme, hotel, summary, coverRef, rooms, compact 
                   <span className="font-bold text-sm text-gray-900">{r.name}</span>
                   <span className="text-sm font-bold" style={{ color: theme.primary }}>{rupee(r.price)}</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Sleeps {r.maxOccupancy}{r.bedNote ? ` · ${r.bedNote}` : ''}
-                </p>
-                {(r.amenities.length > 0 || r.addons.length > 0) && (
+                {r.bedNote && <p className="text-xs text-gray-400 mt-0.5">{r.bedNote}</p>}
+                <span className="inline-flex items-center gap-1 mt-1.5 text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
+                  <span aria-hidden>👤</span> Max {r.maxOccupancy} guest{r.maxOccupancy === 1 ? '' : 's'}
+                </span>
+                {r.amenities.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {r.amenities.map(a => (
                       <span key={a} className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{a}</span>
                     ))}
-                    {r.addons.map(a => (
-                      <span key={a} className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: theme.accent, color: theme.primary }}>{a}</span>
-                    ))}
                   </div>
                 )}
+                {/* View + Meal plan mirror the real booking flow: optional groups
+                    the guest picks from, each choice adding to the nightly rate.
+                    The default (free) chip is pre-selected, like on the live page. */}
+                <PreviewAddonGroup title="View" defaultLabel="Standard" options={r.viewOptions} theme={theme} />
+                <PreviewAddonGroup title="Meal plan" defaultLabel="Room only" options={r.mealOptions} theme={theme} />
                 <button
                   className="mt-3 w-full py-2 rounded-lg text-white text-xs font-bold"
                   style={{ background: theme.primary }}
@@ -143,6 +160,40 @@ export function WizardPreview({ theme, hotel, summary, coverRef, rooms, compact 
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// A read-only stand-in for the booking page's optional add-on selector. Shows the
+// default (free) choice pre-selected followed by each opted-in option with its
+// "+₹" surcharge, so the owner sees exactly what a guest chooses from. Renders
+// nothing when the room offers no options in that group.
+function PreviewAddonGroup({ title, defaultLabel, options, theme }: {
+  title: string
+  defaultLabel: string
+  options: PreviewAddon[]
+  theme: Theme
+}) {
+  if (options.length === 0) return null
+  return (
+    <div className="mt-2.5">
+      <p className="text-[10px] font-bold text-gray-400 tracking-wide uppercase mb-1">{title}</p>
+      <div className="flex flex-wrap gap-1.5">
+        <span
+          className="text-[11px] px-2 py-0.5 rounded-full font-medium text-white"
+          style={{ background: theme.primary }}
+        >
+          {defaultLabel}
+        </span>
+        {options.map(o => (
+          <span
+            key={o.label}
+            className="text-[11px] px-2 py-0.5 rounded-full border border-gray-200 text-gray-600"
+          >
+            {o.label} +{rupee(o.priceDelta)}
+          </span>
+        ))}
       </div>
     </div>
   )

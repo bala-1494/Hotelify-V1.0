@@ -291,6 +291,12 @@ export default function GuestBookingPage() {
                             </span>
                           )}
                         </div>
+                        {room.bedNote && (
+                          <p className="text-xs text-gray-400 mt-0.5">{room.bedNote}</p>
+                        )}
+                        <span className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
+                          <span aria-hidden>👤</span> Max {room.maxOccupancy ?? 2} guest{(room.maxOccupancy ?? 2) === 1 ? '' : 's'}
+                        </span>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           {room.amenities.map(a => (
                             <span key={a} className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{a}</span>
@@ -310,10 +316,10 @@ export default function GuestBookingPage() {
                       return (
                         <div className="mt-4 pt-4 border-t border-gray-50 space-y-3" onClick={e => e.stopPropagation()}>
                           {vo.length > 0 && (
-                            <OptionRadioGroup title="View" options={vo} selectedId={selectedViewId} onSelect={setSelectedViewId} theme={theme} />
+                            <OptionRadioGroup title="View" defaultLabel="Standard" options={vo} selectedId={selectedViewId} onSelect={setSelectedViewId} theme={theme} />
                           )}
                           {mo.length > 0 && (
-                            <OptionRadioGroup title="Meal Plan" options={mo} selectedId={selectedMealId} onSelect={setSelectedMealId} theme={theme} />
+                            <OptionRadioGroup title="Meal Plan" defaultLabel="Room only" options={mo} selectedId={selectedMealId} onSelect={setSelectedMealId} theme={theme} />
                           )}
                         </div>
                       )
@@ -474,9 +480,11 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 function OptionRadioGroup({
-  title, options, selectedId, onSelect, theme,
+  title, defaultLabel, options, selectedId, onSelect, theme,
 }: {
   title: string
+  // Label for the free, no-add-on default choice (e.g. "Standard" / "Room only").
+  defaultLabel: string
   options: { id: string; label: string; priceDelta: number }[]
   selectedId: string | null
   onSelect: (id: string | null) => void
@@ -486,7 +494,7 @@ function OptionRadioGroup({
     <div>
       <p className="text-xs font-medium text-gray-500 mb-1.5">{title}</p>
       <div className="flex flex-wrap gap-2">
-        <OptionChip active={selectedId === null} onClick={() => onSelect(null)} theme={theme}>None</OptionChip>
+        <OptionChip active={selectedId === null} onClick={() => onSelect(null)} theme={theme}>{defaultLabel}</OptionChip>
         {options.map(o => (
           <OptionChip key={o.id} active={selectedId === o.id} onClick={() => onSelect(o.id)} theme={theme}>
             {o.label} +₹{o.priceDelta}
