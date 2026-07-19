@@ -42,6 +42,8 @@ function mapRoomType(r: any): RoomType {
     viewOptionIds: r.view_option_ids ?? [],
     mealOptionIds: r.meal_option_ids ?? [],
     available: r.available ?? true,
+    maxOccupancy: r.max_occupancy != null ? Number(r.max_occupancy) : 2,
+    bedNote: r.bed_note ?? '',
   }
 }
 
@@ -186,7 +188,8 @@ export async function createHotelForOwner(input: Hotel, ownerEmail: string): Pro
     types: input.types ?? [],
     reviews: input.reviews ?? [],
     subdomain,
-    theme_id: DEFAULT_THEME_ID,
+    // Honor a theme chosen during onboarding; default when none was picked.
+    theme_id: input.themeId || DEFAULT_THEME_ID,
     published: false,
     view_options: input.viewOptions ?? [],
     meal_options: input.mealOptions ?? [],
@@ -322,6 +325,8 @@ export async function replaceRoomTypes(hotelId: string, roomTypes: RoomType[]): 
       view_option_ids: r.viewOptionIds ?? [],
       meal_option_ids: r.mealOptionIds ?? [],
       available: r.available ?? true,
+      max_occupancy: r.maxOccupancy ?? 2,
+      bed_note: r.bedNote ?? '',
       sort_order: i,
     }
     if (isUuid(r.id) && existingIds.has(r.id)) {
