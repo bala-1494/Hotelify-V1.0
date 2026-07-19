@@ -125,7 +125,7 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
     render(<Page />)
 
     // Wait for the Rooms step to render off the fetched hotel.
-    await screen.findByText('Room Types')
+    await screen.findByText('Room types')
 
     // Only the initial GET has happened — no room-type writes yet.
     expect(roomTypePutCalls()).toHaveLength(0)
@@ -148,7 +148,7 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
   it('advances to the next step after a successful save', async () => {
     const user = userEvent.setup()
     render(<Page />)
-    await screen.findByText('Room Types')
+    await screen.findByText('Room types')
 
     await user.click(screen.getByRole('button', { name: 'Edit details' }))
     await user.click(screen.getByRole('button', { name: 'AC' }))
@@ -156,7 +156,7 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
 
     // Rooms editor is gone once we move on to the Theme step.
     await vi.waitFor(() => {
-      expect(screen.queryByText('Room Types')).not.toBeInTheDocument()
+      expect(screen.queryByText('Room types')).not.toBeInTheDocument()
     })
     expect(roomTypePutCalls()).toHaveLength(1)
   })
@@ -173,7 +173,7 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
     })
 
     render(<Page />)
-    await screen.findByText('Room Types')
+    await screen.findByText('Room types')
 
     await user.click(screen.getByRole('button', { name: 'Edit details' }))
     await user.click(screen.getByRole('button', { name: 'AC' }))
@@ -181,6 +181,6 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
 
     // Error is shown, and we're still on the Rooms step (not silently reverted).
     await screen.findByText(/column "view_option_ids" does not exist/)
-    expect(screen.getByText('Room Types')).toBeInTheDocument()
+    expect(screen.getByText('Room types')).toBeInTheDocument()
   })
 })

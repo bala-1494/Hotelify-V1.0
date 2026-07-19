@@ -345,10 +345,13 @@ export default function HotelSetupWizardPage() {
                 )}
                 <RoomTypesEditor
                   roomTypes={roomsData.roomTypes}
-                  onChange={rt => setRoomsDraft({ ...roomsData, roomTypes: rt })}
+                  // Functional updates so a single interaction that emits BOTH
+                  // callbacks (e.g. removing a shared add-on also drops its id
+                  // from each room) composes instead of clobbering.
+                  onChange={rt => setRoomsDraft(d => ({ ...(d ?? roomsData), roomTypes: rt }))}
                   viewOptions={roomsData.viewOptions}
                   mealOptions={roomsData.mealOptions}
-                  onChangeOptions={patch => setRoomsDraft({ ...roomsData, ...patch })}
+                  onChangeOptions={patch => setRoomsDraft(d => ({ ...(d ?? roomsData), ...patch }))}
                 />
               </>
             )
