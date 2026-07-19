@@ -124,7 +124,7 @@ beforeEach(() => {
   })
 })
 
-describe('HotelSetupWizardPage — Rooms step is buffered', () => {
+describe('HotelSetupWizardPage — Rooms step', () => {
   it('does not persist while editing chips, then saves once on Confirm & continue', async () => {
     const user = userEvent.setup()
     render(<Page />)
@@ -191,19 +191,6 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
     expect(roomTypePutCalls()).toHaveLength(0)
   })
 
-  it('shows the "is live" celebration after publishing from the wizard', async () => {
-    const user = userEvent.setup()
-    window.history.replaceState({}, '', '/hotel/h1?step=5') // land on the Publish step
-    render(<Page />)
-
-    await user.click(await screen.findByText('__publish__'))
-
-    // The console hands off to the same celebration the onboarding flow ends on.
-    await screen.findByText('Bloom Hub is live!')
-    expect(screen.getByText('hotelify.com/bloom-hub')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'View booking page' })).toHaveAttribute('href', '/book/bloom-hub')
-  })
-
   it('surfaces an error and stays on the Rooms step when the save fails', async () => {
     const user = userEvent.setup()
     apiJson.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -225,5 +212,20 @@ describe('HotelSetupWizardPage — Rooms step is buffered', () => {
     // Error is shown, and we're still on the Rooms step (not silently reverted).
     await screen.findByText(/column "view_option_ids" does not exist/)
     expect(screen.getByText('Room types')).toBeInTheDocument()
+  })
+})
+
+describe('HotelSetupWizardPage — Publish', () => {
+  it('hands off to the "is live" celebration after publishing', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState({}, '', '/hotel/h1?step=5') // land on the Publish step
+    render(<Page />)
+
+    await user.click(await screen.findByText('__publish__'))
+
+    // The console ends on the same celebration the onboarding flow does.
+    await screen.findByText('Bloom Hub is live!')
+    expect(screen.getByText('hotelify.com/bloom-hub')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View booking page' })).toHaveAttribute('href', '/book/bloom-hub')
   })
 })
